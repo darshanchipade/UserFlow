@@ -1401,7 +1401,7 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
                           JSON Fields
                         </h3>
                         <span className="text-xs text-slate-500">
-                          {selectedLeafNodes.length || allLeafNodes.length} fields
+                          {allLeafNodes.length} fields
                         </span>
                       </div>
                       <div className="mt-3">

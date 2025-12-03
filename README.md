@@ -20,6 +20,24 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Spring Boot data pipeline integration
+
+The ingestion UI is wired to the Spring Boot backend from [darshanchipade/springboot-SQS-Impl](https://github.com/darshanchipade/springboot-SQS-Impl). Configure the base URL once the backend is running:
+
+```bash
+# .env.local
+SPRINGBOOT_BASE_URL=http://localhost:8080
+```
+
+| UI option           | Next.js route                   | Spring Boot endpoint                                      | Notes |
+| ------------------- | --------------------------------| --------------------------------------------------------- | ----- |
+| Local file upload   | `POST /api/ingestion/upload`    | `POST /api/extract-cleanse-enrich-and-store`              | Sends multipart form data with the uploaded file. |
+| S3 / classpath URI  | `POST /api/ingestion/source`    | `GET /api/extract-cleanse-enrich-and-store?sourceUri=...` | Provide `s3://` or `classpath:` URIs; Next.js normalizes query params. |
+| API JSON payload    | `POST /api/ingestion/payload`   | `POST /api/ingest-json-payload`                           | Wrap your JSON inside `{ "payload": <yourObject> }`. |
+| Status polling      | `GET /api/ingestion/status?id=` | `GET /api/cleansed-data-status/{id}`                      | Returns the current cleansing/enrichment status string. |
+
+Each Next.js route proxies requests to the backend, surfaces the raw response body, and attempts to extract `cleansedDataStoreId` + status markers so you can trigger follow-up status checks from the UI.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

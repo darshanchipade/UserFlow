@@ -25,7 +25,7 @@ type UploadItem = {
   name: string;
   size: number;
   type: string;
-  source: "Local" | "API";
+  source: "Local" | "API" | "S3";
   status: UploadStatus;
   createdAt: number;
   cleansedId?: string;
@@ -59,9 +59,9 @@ const uploadTabs = [
   {
     id: "s3" as const,
     title: "Amazon S3 / Cloud",
-    description: "Connect to an existing S3 bucket.",
+    description: "Trigger ingestion from S3 or classpath URIs.",
     icon: CloudArrowUpIcon,
-    disabled: true,
+    disabled: false,
   },
   {
     id: "local" as const,
@@ -228,6 +228,9 @@ const filterTree = (nodes: TreeNode[], query: string): TreeNode[] => {
 };
 
 const getFileLabel = (fileName: string) => {
+  if (fileName.toLowerCase().startsWith("s3://")) {
+    return { label: "S3", style: "bg-amber-100 text-amber-700" };
+  }
   const extension = fileName.split(".").pop()?.toLowerCase();
   switch (extension) {
     case "json":
@@ -271,6 +274,52 @@ const statusStyles: Record<
   },
 };
 
+const extractCleansedIdFromText = (input: string) => {
+  const match = input.match(/CleansedDataID:\s*([0-9a-fA-F-]{32,36})/i);
+  return match ? match[1].trim() : undefined;
+};
+
+const extractStatusFromText = (input: string) => {
+  const match = input.match(/status:\s*([A-Z0-9_\s-]+)/i);
+  return match ? match[1].trim().toUpperCase() : undefined;
+};
+
+const deriveCleansedId = (body: unknown): string | undefined => {
+  if (typeof body === "object" && body !== null) {
+    const candidate = (body as Record<string, unknown>)["cleansedDataStoreId"];
+    return typeof candidate === "string" ? candidate : undefined;
+  }
+  if (typeof body === "string") {
+    return extractCleansedIdFromText(body);
+  }
+  return undefined;
+};
+
+const deriveBackendStatus = (body: unknown): string | undefined => {
+  if (typeof body === "object" && body !== null) {
+    const candidate = (body as Record<string, unknown>)["status"];
+    return typeof candidate === "string" ? candidate : undefined;
+  }
+  if (typeof body === "string") {
+    return extractStatusFromText(body);
+  }
+  return undefined;
+};
+
+const safeSerializeBody = (body: unknown): string | undefined => {
+  if (typeof body === "string") {
+    return body;
+  }
+  if (body === null || body === undefined) {
+    return undefined;
+  }
+  try {
+    return JSON.stringify(body);
+  } catch {
+    return undefined;
+  }
+};
+
 const TreeCheckbox = ({
   checked,
   indeterminate,
@@ -311,6 +360,8 @@ export default function Home() {
   const [apiFeedback, setApiFeedback] = useState<ApiFeedback>({
     state: "idle",
   });
+  const [s3Uri, setS3Uri] = useState("");
+  const [s3Feedback, setS3Feedback] = useState<ApiFeedback>({ state: "idle" });
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
@@ -379,20 +430,11 @@ export default function Home() {
         });
         const payload = await response.json();
         const body = payload.body as Record<string, unknown> | string | null;
-        const cleansedId =
-          typeof body === "object" && body !== null
-            ? (body["cleansedDataStoreId"] as string | undefined)
-            : undefined;
-        const backendStatus =
-          typeof body === "object" && body !== null
-            ? (body["status"] as string | undefined)
-            : undefined;
+        const cleansedId = deriveCleansedId(body);
+        const backendStatus = deriveBackendStatus(body);
         const backendMessage =
-          typeof body === "string"
-            ? body
-            : typeof payload.rawBody === "string"
-              ? payload.rawBody
-              : undefined;
+          safeSerializeBody(body) ??
+          (typeof payload.rawBody === "string" ? payload.rawBody : undefined);
 
         setUploads((previous) =>
           previous.map((item) =>
@@ -462,6 +504,93 @@ export default function Home() {
     });
   };
 
+  const submitS3Ingestion = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedUri = s3Uri.trim();
+    if (!normalizedUri) {
+      setS3Feedback({
+        state: "error",
+        message: "Provide an S3 or classpath URI before dispatching.",
+      });
+      return;
+    }
+
+    setS3Feedback({ state: "loading", message: "Dispatching source..." });
+    const uploadId = crypto.randomUUID();
+    setUploads((previous) => [
+      {
+        id: uploadId,
+        name: normalizedUri,
+        size: Number.NaN,
+        type: "text/uri-list",
+        source: "S3",
+        status: "uploading",
+        createdAt: Date.now(),
+      },
+      ...previous,
+    ]);
+
+    try {
+      const response = await fetch("/api/ingestion/source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceUri: normalizedUri }),
+      });
+      const payload = await response.json();
+      const body = payload.body as Record<string, unknown> | string | null;
+      const cleansedId = deriveCleansedId(body);
+      const backendStatus =
+        deriveBackendStatus(body) ??
+        (typeof payload.status === "string" ? payload.status : undefined);
+      const backendMessage =
+        safeSerializeBody(body) ??
+        (typeof payload.rawBody === "string" ? payload.rawBody : undefined);
+
+      setUploads((previous) =>
+        previous.map((upload) =>
+          upload.id === uploadId
+            ? {
+                ...upload,
+                status: response.ok ? "success" : "error",
+                cleansedId: cleansedId ?? upload.cleansedId,
+                backendStatus: backendStatus ?? upload.backendStatus,
+                backendMessage: backendMessage ?? upload.backendMessage,
+              }
+            : upload,
+        ),
+      );
+
+      setS3Feedback({
+        state: response.ok ? "success" : "error",
+        message: response.ok
+          ? "S3 ingestion accepted. Enrichment will run shortly."
+          : backendMessage ??
+            "Backend rejected the S3 ingestion request. Check logs.",
+      });
+
+      if (response.ok) {
+        setS3Uri("");
+      }
+    } catch (error) {
+      setUploads((previous) =>
+        previous.map((upload) =>
+          upload.id === uploadId
+            ? {
+                ...upload,
+                status: "error",
+                backendMessage:
+                  error instanceof Error ? error.message : "Unknown error",
+              }
+            : upload,
+        ),
+      );
+      setS3Feedback({
+        state: "error",
+        message: "Failed to reach the Spring Boot API.",
+      });
+    }
+  };
+
   const submitApiPayload = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!apiPayload.trim()) return;
@@ -475,7 +604,7 @@ export default function Home() {
       return;
     }
 
-    setApiFeedback({ state: "loading" });
+    setApiFeedback({ state: "loading", message: "Dispatching payload..." });
     const uploadId = crypto.randomUUID();
     setUploads((previous) => [
       {
@@ -498,14 +627,11 @@ export default function Home() {
       });
       const payload = await response.json();
       const body = payload.body as Record<string, unknown> | string | null;
-      const cleansedId =
-        typeof body === "object" && body !== null
-          ? (body["cleansedDataStoreId"] as string | undefined)
-          : undefined;
-      const backendStatus =
-        typeof body === "object" && body !== null
-          ? (body["status"] as string | undefined)
-          : undefined;
+      const cleansedId = deriveCleansedId(body);
+      const backendStatus = deriveBackendStatus(body);
+      const backendMessage =
+        safeSerializeBody(body) ??
+        (typeof payload.rawBody === "string" ? payload.rawBody : undefined);
 
       setUploads((previous) =>
         previous.map((upload) =>
@@ -515,10 +641,7 @@ export default function Home() {
                 status: response.ok ? "success" : "error",
                 cleansedId: cleansedId ?? upload.cleansedId,
                 backendStatus: backendStatus ?? upload.backendStatus,
-                backendMessage:
-                  typeof body === "string"
-                    ? body
-                    : JSON.stringify(body ?? {}),
+                backendMessage: backendMessage ?? upload.backendMessage,
               }
             : upload,
         ),
@@ -528,7 +651,7 @@ export default function Home() {
         state: response.ok ? "success" : "error",
         message: response.ok
           ? "Payload accepted. Enrichment pipeline triggered."
-          : "Backend rejected the payload.",
+          : backendMessage ?? "Backend rejected the payload.",
       });
       if (response.ok) {
         setApiPayload("");
@@ -780,6 +903,61 @@ export default function Home() {
                   />
                 </label>
               </div>
+            )}
+
+            {activeTab === "s3" && (
+              <form
+                className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                onSubmit={submitS3Ingestion}
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <CloudArrowUpIcon className="size-5 text-indigo-500" />
+                  GET /api/extract-cleanse-enrich-and-store
+                </div>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-900">
+                  Source URI
+                  <input
+                    type="text"
+                    value={s3Uri}
+                    onChange={(event) => setS3Uri(event.target.value)}
+                    placeholder="s3://bucket/path/file.json or classpath:data/file.json"
+                    className="rounded-xl border border-slate-200 bg-white p-3 text-sm font-normal text-slate-900 shadow-inner focus:border-indigo-500 focus:outline-none"
+                  />
+                  <span className="text-xs font-normal text-slate-500">
+                    Provide a fully-qualified S3 URI or a classpath reference that
+                    the Spring Boot app can resolve.
+                  </span>
+                </label>
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  {s3Feedback.state !== "idle" && (
+                    <div
+                      className={clsx(
+                        "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
+                        s3Feedback.state === "success"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : s3Feedback.state === "error"
+                            ? "bg-rose-50 text-rose-700"
+                            : "bg-indigo-50 text-indigo-600",
+                      )}
+                    >
+                      {s3Feedback.state === "loading" ? (
+                        <ArrowPathIcon className="size-4 animate-spin" />
+                      ) : s3Feedback.state === "success" ? (
+                        <CheckCircleIcon className="size-4" />
+                      ) : (
+                        <ExclamationCircleIcon className="size-4" />
+                      )}
+                      {s3Feedback.message}
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                  >
+                    Dispatch Source
+                  </button>
+                </div>
+              </form>
             )}
 
             {activeTab === "api" && (

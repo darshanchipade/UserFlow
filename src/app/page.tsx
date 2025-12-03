@@ -66,6 +66,16 @@ type CleansingJob = {
   checking?: boolean;
 };
 
+type EnrichedField = {
+  id: string;
+  field: string;
+  path: string;
+  originalValue: string;
+  enrichedValue: string;
+  tags: string[];
+  examples: string[];
+};
+
 const stageOrder = [
   "Ingestion",
   "Extraction",
@@ -443,6 +453,46 @@ export default function Home() {
       path: leaf.path,
     }));
   }, [previewSourceNode]);
+
+  const enrichedFields = useMemo<EnrichedField[]>(() => {
+    if (!extractionRows.length) return [];
+    return extractionRows.map((row, index) => {
+      const segments = row.path.split(".").filter(Boolean);
+      const tags =
+        segments.length > 0
+          ? segments
+              .slice(-3)
+              .map((segment) =>
+                segment
+                  .replace(/\[\d+\]/g, "")
+                  .replace(/[_]/g, " ")
+                  .trim(),
+              )
+              .filter(Boolean)
+          : ["auto-tagged"];
+      const normalizedValue = row.originalValue || "—";
+      const trimmedValue =
+        normalizedValue.length > 140
+          ? `${normalizedValue.slice(0, 137).trimEnd()}…`
+          : normalizedValue;
+      const exampleSeed =
+        trimmedValue.length > 80
+          ? `${trimmedValue.slice(0, 77).trimEnd()}…`
+          : trimmedValue;
+      return {
+        id: `${row.path}-${index}`,
+        field: row.field,
+        path: row.path,
+        originalValue: normalizedValue,
+        enrichedValue: trimmedValue,
+        tags: tags.length ? tags : ["core field"],
+        examples: [
+          `Sample: ${exampleSeed}`,
+          `Alt example: ${exampleSeed.toUpperCase().slice(0, 60)}`,
+        ],
+      };
+    });
+  }, [extractionRows]);
 
   const rootNodeId = treeNodes[0]?.id ?? null;
   const canExtract = allLeafNodes.length > 0;
@@ -1795,18 +1845,30 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-400">
-                    Enrichment
+                    Data Enrichment
                   </p>
                   <h2 className="mt-1 text-2xl font-semibold text-slate-900">
-                    Content enrichment underway
+                    Cleansed payload is being enriched
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    We’re generating structured content from the cleansed payload. Refresh
-                    the status to see when the job completes.
+                    Monitor the Spring Boot enrichment job and review the generated content
+                    before promoting downstream.
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                  <ArrowPathIcon className="size-3.5 animate-spin" />
+                <span
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
+                    enrichmentStatus?.includes("COMPLETE")
+                      ? "bg-emerald-50 text-emerald-600"
+                      : "bg-amber-50 text-amber-700",
+                  )}
+                >
+                  <ArrowPathIcon
+                    className={clsx(
+                      "size-3.5",
+                      enrichmentStatus?.includes("COMPLETE") ? "" : "animate-spin",
+                    )}
+                  />
                   {enrichmentStatus ?? "Processing"}
                 </span>
               </div>
@@ -1879,50 +1941,92 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-400">
-                    Enriched data
+                    Enriched Fields
                   </p>
                   <h3 className="mt-1 text-xl font-semibold text-slate-900">
-                    Cleansed content snapshot
+                    Tagged insights & generated examples
                   </h3>
+                  <p className="text-sm text-slate-500">
+                    Review the enriched value, applied tags, and suggested examples for each
+                    field before publishing.
+                  </p>
                 </div>
                 <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
-                  Review
+                  {enrichedFields.length} fields
                 </span>
               </div>
-              <div className="mt-6 rounded-2xl border border-slate-100">
-                <div className="grid grid-cols-[220px_minmax(0,1fr)] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <div className="px-4 py-3">Field</div>
-                  <div className="px-4 py-3">Cleansed Value</div>
-                </div>
-                <div className="max-h-[420px] overflow-y-auto">
-                  {extractionRows.length === 0 ? (
-                    <div className="p-6 text-center text-sm text-slate-500">
-                      Cleansed values will appear here once available.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {extractionRows.map((row) => (
-                        <div
-                          key={`${row.path}-enriched`}
-                          className="grid grid-cols-[220px_minmax(0,1fr)]"
-                        >
-                          <div className="bg-slate-50/40 px-4 py-3">
-                            <p className="text-sm font-semibold text-slate-900">
-                              {row.field}
+              <div className="mt-6">
+                {enrichedFields.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
+                    Enrichment details will appear here once the backend returns structured
+                    results.
+                  </div>
+                ) : (
+                  <div className="max-h-[520px] space-y-4 overflow-y-auto pr-2">
+                    {enrichedFields.map((field) => (
+                      <div
+                        key={field.id}
+                        className="rounded-2xl border border-slate-100 bg-slate-50 p-5 shadow-inner"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-400">
+                              Field
                             </p>
-                            <p className="text-xs text-slate-500">{row.path}</p>
+                            <h4 className="text-lg font-semibold text-slate-900">
+                              {field.field}
+                            </h4>
+                            <p className="text-xs text-slate-500">{field.path}</p>
                           </div>
-                          <div className="px-4 py-3">
-                            <p className="text-sm text-slate-700">{row.originalValue}</p>
+                          <div className="rounded-2xl bg-white px-4 py-2 text-xs text-slate-500">
+                            Original value
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {field.originalValue}
+                            </p>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                        <div className="mt-4 grid gap-4 md:grid-cols-3">
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-400">
+                              Enriched value
+                            </p>
+                            <p className="mt-1 text-sm text-slate-700">{field.enrichedValue}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-400">
+                              Tags
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {field.tags.map((tag) => (
+                                <span
+                                  key={`${field.id}-${tag}`}
+                                  className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-400">
+                              Examples
+                            </p>
+                            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                              {field.examples.map((example, index) => (
+                                <li key={`${field.id}-example-${index}`} className="rounded-xl bg-white/70 px-3 py-1">
+                                  {example}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

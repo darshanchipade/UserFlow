@@ -209,6 +209,16 @@ const gatherLeafNodes = (node: TreeNode): TreeNode[] => {
   return node.children.flatMap((child) => gatherLeafNodes(child));
 };
 
+const buildNodeLookup = (nodes: TreeNode[]): Map<string, TreeNode> => {
+  const map = new Map<string, TreeNode>();
+  const traverse = (node: TreeNode) => {
+    map.set(node.id, node);
+    node.children?.forEach(traverse);
+  };
+  nodes.forEach(traverse);
+  return map;
+};
+
 const isNodeFullySelected = (
   node: TreeNode,
   selected: Set<string>,
@@ -308,6 +318,15 @@ const statusStyles: Record<
   },
 };
 
+const nodeTypeBadges: Record<
+  TreeNode["type"],
+  { label: string; className: string }
+> = {
+  object: { label: "Object", className: "bg-slate-100 text-slate-700" },
+  array: { label: "Array", className: "bg-violet-100 text-violet-700" },
+  value: { label: "Value", className: "bg-emerald-100 text-emerald-700" },
+};
+
 const FeedbackPill = ({ feedback }: { feedback: ApiFeedback }) => {
   if (feedback.state === "idle") {
     return null;
@@ -370,6 +389,7 @@ const TreeCheckbox = ({
       className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
       checked={checked}
       onChange={(event) => onChange(event.target.checked)}
+      onClick={(event) => event.stopPropagation()}
     />
   );
 };
@@ -381,6 +401,7 @@ export default function Home() {
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("ingestion");
   const [extractedFileName, setExtractedFileName] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -412,6 +433,20 @@ export default function Home() {
     [treeNodes, searchQuery],
   );
 
+  const nodeLookup = useMemo(() => buildNodeLookup(treeNodes), [treeNodes]);
+  const focusedNode = useMemo(
+    () => (focusedNodeId ? nodeLookup.get(focusedNodeId) ?? null : null),
+    [nodeLookup, focusedNodeId],
+  );
+
+  useEffect(() => {
+    if (!treeNodes.length) {
+      setFocusedNodeId(null);
+    } else if (focusedNodeId && !nodeLookup.has(focusedNodeId)) {
+      setFocusedNodeId(treeNodes[0]?.id ?? null);
+    }
+  }, [treeNodes, nodeLookup, focusedNodeId]);
+
   const selectedLeafNodes = useMemo(() => {
     if (!treeNodes.length) return [];
     return treeNodes.flatMap((node) =>
@@ -430,6 +465,24 @@ export default function Home() {
   }, [uploads, historySearch]);
 
   const canExtract = selectedLeafNodes.length > 0;
+  const focusedNodeStats = useMemo(() => {
+    if (!focusedNode) return null;
+    const nodeIds = gatherNodeIds(focusedNode);
+    const selectedCount = nodeIds.filter((id) => selectedNodes.has(id)).length;
+    return {
+      totalNodes: nodeIds.length,
+      selectedCount,
+      descendantCount: Math.max(nodeIds.length - 1, 0),
+    };
+  }, [focusedNode, selectedNodes]);
+
+  const focusedNodeSelectionState = useMemo(() => {
+    if (!focusedNode) return null;
+    return {
+      full: isNodeFullySelected(focusedNode, selectedNodes),
+      partial: isNodePartiallySelected(focusedNode, selectedNodes),
+    };
+  }, [focusedNode, selectedNodes]);
   const latestUpload = uploads[0];
   const latestUploadTime = latestUpload
     ? new Date(latestUpload.createdAt).toLocaleString()
@@ -536,6 +589,7 @@ export default function Home() {
         const defaultSelection = new Set(allNodeIds);
         setSelectedNodes(defaultSelection);
         setExtractedFileName(file.name);
+        setFocusedNodeId(rootNode.id);
 
         setUploads((previous) =>
           previous.map((item) =>
@@ -887,19 +941,28 @@ export default function Home() {
       const partiallySelected = isNodePartiallySelected(node, selectedNodes);
       const matchesSearch =
         searchQuery && node.label.toLowerCase().includes(searchQuery.toLowerCase());
+      const isFocused = node.id === focusedNodeId;
 
       return (
         <div key={node.id} className="space-y-2">
           <div
             className={clsx(
-              "flex items-center gap-2 rounded-lg px-2 py-1.5",
-              matchesSearch ? "bg-indigo-50" : "bg-transparent",
+              "flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition",
+              isFocused
+                ? "border border-indigo-200 bg-indigo-50 shadow-sm"
+                : matchesSearch
+                  ? "bg-indigo-50"
+                  : "bg-transparent hover:bg-slate-50",
             )}
+            onClick={() => setFocusedNodeId(node.id)}
           >
             {hasChildren ? (
               <button
                 type="button"
-                onClick={() => toggleNode(node.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleNode(node.id);
+                }}
                 className="text-slate-500 transition hover:text-slate-800"
                 aria-label={expanded ? "Collapse section" : "Expand section"}
               >
@@ -1307,24 +1370,170 @@ export default function Home() {
             </span>
           </div>
 
-          <div className="mt-4">
-            <div className="relative">
-              <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
-              <input
-                type="search"
-                placeholder="Search fields..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
-              />
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+            <div>
+              <div className="relative">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
+                <input
+                  type="search"
+                  placeholder="Search fields..."
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
+                />
+              </div>
+              <div className="mt-4 max-h-[420px] overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/60 p-3 pr-4">
+                {filteredTree.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
+                    Upload a JSON file to view its structure.
+                  </div>
+                ) : (
+                  <div className="space-y-3">{renderTree(filteredTree)}</div>
+                )}
+              </div>
             </div>
-            <div className="mt-4 max-h-[420px] overflow-y-auto pr-2">
-              {filteredTree.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
-                  Upload a JSON file to view its structure.
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              {!focusedNode ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-slate-500">
+                  <DocumentTextIcon className="size-6 text-slate-400" />
+                  Select a field on the left to preview its details.
                 </div>
               ) : (
-                <div className="space-y-3">{renderTree(filteredTree)}</div>
+                <>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-400">
+                        Field
+                      </p>
+                      <h4 className="text-lg font-semibold text-slate-900">
+                        {focusedNode.label}
+                      </h4>
+                      <p className="text-xs text-slate-500 break-all">
+                        {focusedNode.path}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <span
+                        className={clsx(
+                          "rounded-full px-3 py-1 text-xs font-semibold",
+                          nodeTypeBadges[focusedNode.type].className,
+                        )}
+                      >
+                        {nodeTypeBadges[focusedNode.type].label}
+                      </span>
+                      {focusedNodeSelectionState && (
+                        <span
+                          className={clsx(
+                            "rounded-full px-3 py-1 text-[11px] font-semibold",
+                            focusedNodeSelectionState.full
+                              ? "bg-emerald-50 text-emerald-700"
+                              : focusedNodeSelectionState.partial
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-slate-100 text-slate-600",
+                          )}
+                        >
+                          {focusedNodeSelectionState.full
+                            ? "Selected"
+                            : focusedNodeSelectionState.partial
+                              ? "Partially selected"
+                              : "Not selected"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {focusedNode.value !== undefined && (
+                    <div className="mt-4">
+                      <p className="text-xs uppercase tracking-wide text-slate-400">
+                        Sample value
+                      </p>
+                      <pre className="mt-2 max-h-40 overflow-y-auto rounded-xl bg-slate-900/90 p-3 text-[11px] leading-relaxed text-slate-100">
+                        {focusedNode.value}
+                      </pre>
+                    </div>
+                  )}
+
+                  {focusedNodeStats && (
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-xl bg-slate-50 p-3">
+                        <p className="text-xs uppercase text-slate-400">
+                          Descendants
+                        </p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">
+                          {focusedNodeStats.descendantCount}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-slate-50 p-3">
+                        <p className="text-xs uppercase text-slate-400">
+                          Selected
+                        </p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">
+                          {focusedNodeStats.selectedCount}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {!!focusedNode.children?.length && (
+                    <div className="mt-4">
+                      <p className="text-xs uppercase tracking-wide text-slate-400">
+                        Child fields
+                      </p>
+                      <div className="mt-2 space-y-1 text-sm text-slate-600">
+                        {focusedNode.children.slice(0, 4).map((child) => (
+                          <div
+                            key={child.id}
+                            className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-xs font-medium"
+                          >
+                            <span className="truncate">{child.label}</span>
+                            <span className="text-slate-400">›</span>
+                          </div>
+                        ))}
+                        {focusedNode.children.length > 4 && (
+                          <p className="text-xs text-slate-400">
+                            +{focusedNode.children.length - 4} more
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleNodeSelection(focusedNode, true)}
+                      className={clsx(
+                        "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition",
+                        focusedNodeSelectionState?.full
+                          ? "bg-slate-200 text-slate-500"
+                          : "bg-slate-900 text-white hover:bg-black",
+                      )}
+                      disabled={focusedNodeSelectionState?.full}
+                    >
+                      Select branch
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNodeSelection(focusedNode, false)}
+                      className={clsx(
+                        "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition",
+                        focusedNodeSelectionState &&
+                          (focusedNodeSelectionState.full ||
+                            focusedNodeSelectionState.partial)
+                          ? "border-rose-200 text-rose-600 hover:border-rose-300 hover:text-rose-700"
+                          : "border-slate-200 text-slate-400",
+                      )}
+                      disabled={
+                        !focusedNodeSelectionState ||
+                        (!focusedNodeSelectionState.full &&
+                          !focusedNodeSelectionState.partial)
+                      }
+                    >
+                      Clear branch
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           </div>

@@ -245,3 +245,64 @@ private String deriveSourceIdentifier(MultipartFile file) {
         return status;
     }
 }
+
+    @PostMapping("/cleanse-only")
+    public ResponseEntity<String> cleanseOnly(@RequestBody String jsonPayload) {
+        String identifier = "cleanse-only-" + UUID.randomUUID();
+        try {
+            if (jsonPayload == null || jsonPayload.trim().isEmpty()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("JSON payload cannot be empty.");
+            }
+
+            CleansedDataStore cleansedDataEntry =
+                    dataIngestionService.ingestAndCleanseJsonPayload(jsonPayload, identifier);
+
+            if (cleansedDataEntry == null || cleansedDataEntry.getId() == null) {
+                String statusMsg = cleansedDataEntry != null ? cleansedDataEntry.getStatus() : "Unknown";
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                        .body("Failed to cleanse payload. Status: " + statusMsg);
+            }
+
+            ObjectNode responseJson = objectMapper.createObjectNode();
+            responseJson.put("cleansedDataStoreId", cleansedDataEntry.getId().toString());
+            responseJson.put("status", cleansedDataEntry.getStatus());
+            responseJson.put("message", "Cleansing complete. Enrichment not started.");
+
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(responseJson.toString());
+
+        } catch (IllegalArgumentException ex) {
+            logger.error("Invalid payload for {}. {}", identifier, ex.getMessage(), ex);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Invalid payload: " + ex.getMessage());
+        } catch (Exception ex) {
+            logger.error("Unexpected error cleansing payload {}. {}", identifier, ex.getMessage(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Unexpected error cleansing payload.");
+        }
+    }
+
+    @PostMapping("/start-enrichment/{id}")
+    public ResponseEntity<String> startEnrichment(@PathVariable UUID id) {
+        return cleansedDataStoreRepository.findById(id)
+                .map(store -> {
+                    String status = store.getStatus();
+                    if (!"CLEANSED_PENDING_ENRICHMENT".equalsIgnoreCase(status)) {
+                        return ResponseEntity.status(HttpStatus.CONFLICT)
+                                .body("Cannot enrich because current status is " + status);
+                    }
+
+                    new Thread(() -> {
+                        try {
+                            enrichmentPipelineService.enrichAndStore(store);
+                        } catch (Exception e) {
+                            logger.error("Enrichment failed for CleansedDataStore ID: {}", id, e);
+                        }
+                    }).start();
+
+                    return ResponseEntity.status(HttpStatus.ACCEPTED)
+                            .body("Enrichment started for CleansedDataStore ID: " + id);
+                })
+                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("CleansedDataStore ID not found: " + id));
+    }

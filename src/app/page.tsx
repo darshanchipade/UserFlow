@@ -58,6 +58,14 @@ type ApiFeedback = {
   message?: string;
 };
 
+type CleansingJob = {
+  id?: string;
+  status?: string;
+  message?: string;
+  lastChecked?: string;
+  checking?: boolean;
+};
+
 const stageOrder = [
   "Ingestion",
   "Extraction",
@@ -79,6 +87,25 @@ const getStepStatus = (label: (typeof stageOrder)[number], stage: Stage) => {
   if (stepIndex === currentIndex) return "current";
   return "upcoming";
 };
+
+const cleansingRules = [
+  {
+    title: "Strip HTML Tags",
+    description: "Remove any inline markup or unsupported HTML.",
+  },
+  {
+    title: "Normalize NBSP",
+    description: "Convert non-breaking spaces to standard spaces.",
+  },
+  {
+    title: "Collapse Whitespace",
+    description: "Trim and consolidate duplicate whitespace characters.",
+  },
+  {
+    title: "Validate Field Types",
+    description: "Ensure values adhere to the content model expectations.",
+  },
+];
 
 const uploadTabs = [
   {
@@ -382,6 +409,7 @@ export default function Home() {
   const [activeFileName, setActiveFileName] = useState<string>("Content.JSON");
   const [uploadedJsonPayload, setUploadedJsonPayload] = useState<unknown>(null);
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
+  const [cleansingJob, setCleansingJob] = useState<CleansingJob | null>(null);
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
@@ -411,7 +439,8 @@ export default function Home() {
 
   const rootNodeId = treeNodes[0]?.id ?? null;
   const canExtract = allLeafNodes.length > 0;
-  const isExtractionView = currentStage !== "ingestion";
+  const isExtractionView = currentStage === "extraction";
+  const isCleansingView = currentStage === "cleansing";
   const extractionStatusPill =
     currentStage === "cleansing"
       ? {
@@ -553,6 +582,7 @@ export default function Home() {
   const handleBackToSelection = () => {
     setCurrentStage("ingestion");
     setCleansingFeedback({ state: "idle" });
+    setCleansingJob(null);
   };
 
   const sendToCleansing = async () => {
@@ -574,6 +604,10 @@ export default function Home() {
         body: JSON.stringify({ payload: uploadedJsonPayload }),
       });
       const payload = await response.json();
+      const body =
+        typeof payload.body === "object" && payload.body !== null
+          ? (payload.body as Record<string, unknown>)
+          : null;
       setCleansingFeedback({
         state: response.ok ? "success" : "error",
         message: response.ok
@@ -581,6 +615,16 @@ export default function Home() {
           : (payload?.error as string) ?? "Backend rejected the request.",
       });
       if (response.ok) {
+        setCleansingJob({
+          id: (body?.cleansedDataStoreId as string | undefined) ?? undefined,
+          status: (body?.status as string | undefined) ?? "CLEANSED_PENDING_ENRICHMENT",
+          message:
+            typeof payload.rawBody === "string"
+              ? payload.rawBody
+              : typeof payload.body === "string"
+                ? (payload.body as string)
+                : undefined,
+        });
         setCurrentStage("cleansing");
       }
     } catch (error) {
@@ -589,6 +633,50 @@ export default function Home() {
         message:
           error instanceof Error ? error.message : "Failed to reach Spring Boot API.",
       });
+      setCleansingJob({
+        message:
+          error instanceof Error ? error.message : "Failed to reach Spring Boot API.",
+      });
+    }
+  };
+
+  const refreshCleansingStatus = async () => {
+    if (!cleansingJob?.id) return;
+    setCleansingJob((previous) =>
+      previous ? { ...previous, checking: true } : previous,
+    );
+    try {
+      const response = await fetch(
+        `/api/ingestion/status?id=${encodeURIComponent(cleansingJob.id)}`,
+      );
+      const payload = await response.json();
+      const statusValue =
+        typeof payload.status === "string"
+          ? payload.status
+          : typeof payload.body === "string"
+            ? payload.body
+            : undefined;
+      setCleansingJob((previous) =>
+        previous
+          ? {
+              ...previous,
+              status: statusValue ?? previous.status,
+              lastChecked: new Date().toLocaleString(),
+              checking: false,
+            }
+          : previous,
+      );
+    } catch (error) {
+      setCleansingJob((previous) =>
+        previous
+          ? {
+              ...previous,
+              message:
+                error instanceof Error ? error.message : "Unable to refresh status.",
+              checking: false,
+            }
+          : previous,
+      );
     }
   };
 
@@ -1014,7 +1102,7 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
             : "grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]",
         )}
       >
-        {!isExtractionView ? (
+        {currentStage === "ingestion" ? (
           <>
             <section className="space-y-6">
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1375,6 +1463,172 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
               </div>
             </section>
           </>
+        ) : isCleansingView ? (
+          <section className="space-y-6">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Cleansing
+                    </p>
+                    <h2 className="mt-1 text-2xl font-semibold text-slate-900">
+                      Spring Boot job in progress
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      We triggered cleanse-and-store on the selected payload. Track the
+                      backend status below.
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600">
+                    <ExtractionStatusIcon className="size-3.5 animate-spin" />
+                    Awaiting completion
+                  </span>
+                </div>
+                <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Cleansed ID
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {cleansingJob?.id ?? "Pending"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Status
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {cleansingJob?.status ?? "Processing"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Last checked
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {cleansingJob?.lastChecked ?? "—"}
+                    </p>
+                  </div>
+                </div>
+                {cleansingJob?.message && (
+                  <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+                    {cleansingJob.message}
+                  </div>
+                )}
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={refreshCleansingStatus}
+                    disabled={!cleansingJob?.id || cleansingJob.checking}
+                    className={clsx(
+                      "inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-700 transition",
+                      !cleansingJob?.id
+                        ? "cursor-not-allowed opacity-60"
+                        : "hover:border-indigo-200 hover:text-indigo-600",
+                    )}
+                  >
+                    {cleansingJob?.checking ? (
+                      <>
+                        <ArrowPathIcon className="size-4 animate-spin" />
+                        Checking status…
+                      </>
+                    ) : (
+                      <>
+                        <MagnifyingGlassIcon className="size-4" />
+                        Refresh status
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentStage("ingestion");
+                      setCleansingJob(null);
+                      setCleansingFeedback({ state: "idle" });
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white transition hover:bg-black"
+                  >
+                    Back to uploads
+                  </button>
+                </div>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-xs uppercase tracking-wide text-slate-400">
+                  Cleansing checklist
+                </p>
+                <h3 className="mt-1 text-xl font-semibold text-slate-900">
+                  Rules applied to the payload
+                </h3>
+                <div className="mt-4 space-y-3">
+                  {cleansingRules.map((rule) => (
+                    <div
+                      key={rule.title}
+                      className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                    >
+                      <CheckCircleIcon className="size-5 text-emerald-500" />
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {rule.title}
+                        </p>
+                        <p className="text-xs text-slate-500">{rule.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify_between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Data Overview
+                  </p>
+                  <h3 className="mt-1 text-xl font-semibold text-slate-900">
+                    Original content snapshot
+                  </h3>
+                </div>
+                <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                  Read-only
+                </span>
+              </div>
+              <div className="mt-6 rounded-2xl border border-slate-100">
+                <div className="grid grid-cols-[220px_minmax(0,1fr)] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="px-4 py-3">Field</div>
+                  <div className="px-4 py-3">Original Value</div>
+                </div>
+                <div className="max-h-[420px] overflow-y-auto">
+                  {extractionRows.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-slate-500">
+                      Upload a JSON file to preview its fields.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {extractionRows.map((row) => (
+                        <div
+                          key={row.path}
+                          className="grid grid-cols-[220px_minmax(0,1fr)]"
+                        >
+                          <div className="bg-slate-50/40 px-4 py-3">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {row.field}
+                            </p>
+                            <p className="text-xs text-slate-500">{row.path}</p>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p className="text-sm text-slate-700">{row.originalValue}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <FileMetadataCard metadata={fileMetadata} />
+          </section>
         ) : (
           <section className="space-y-6">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1549,7 +1803,6 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
               </div>
             </div>
 
-            <FileMetadataCard metadata={fileMetadata} />
           </section>
         )}
       </main>

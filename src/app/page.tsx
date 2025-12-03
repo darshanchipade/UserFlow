@@ -261,44 +261,6 @@ const formatNodeValue = (value: unknown): string => {
   }
 };
 
-const applyCleansingRules = (value: unknown) => {
-  if (typeof value !== "string") {
-    return { cleansedValue: value, appliedRules: ["Normalize NBSP"] };
-  }
-
-  const operations = [
-    {
-      label: "Strip HTML Tags",
-      fn: (input: string) => input.replace(/<[^>]+>/g, ""),
-    },
-    {
-      label: "Normalize NBSP",
-      fn: (input: string) => input.replace(/\u00a0/g, " "),
-    },
-    {
-      label: "Collapse Whitespace",
-      fn: (input: string) => input.replace(/\s+/g, " ").trim(),
-    },
-  ];
-
-  let result = value;
-  const applied: string[] = [];
-
-  operations.forEach(({ label, fn }) => {
-    const next = fn(result);
-    if (next !== result) {
-      applied.push(label);
-      result = next;
-    }
-  });
-
-  if (applied.length === 0) {
-    applied.push("Normalize NBSP");
-  }
-
-  return { cleansedValue: result, appliedRules: applied };
-};
-
 const getFileLabel = (fileName: string) => {
   const extension = fileName.split(".").pop()?.toLowerCase();
   switch (extension) {
@@ -454,16 +416,11 @@ export default function Home() {
     if (!treeNodes.length) return [];
     const sourceRows =
       selectedLeafNodes.length > 0 ? selectedLeafNodes : allLeafNodes.slice(0, 12);
-    return sourceRows.map((leaf) => {
-      const { cleansedValue, appliedRules } = applyCleansingRules(leaf.value);
-      return {
-        field: leaf.label,
-        originalValue: formatNodeValue(leaf.value),
-        cleansedValue: formatNodeValue(cleansedValue),
-        appliedRules,
-        path: leaf.path,
-      };
-    });
+    return sourceRows.map((leaf) => ({
+      field: leaf.label,
+      originalValue: formatNodeValue(leaf.value),
+      path: leaf.path,
+    }));
   }, [selectedLeafNodes, allLeafNodes, treeNodes]);
 
   const canExtract = extractionRows.length > 0;
@@ -1426,8 +1383,8 @@ export default function Home() {
                     {extractionStatusPill.label}
                   </span>
                 </div>
-                <div className="mt-4 flex flex-col gap-4 lg:flex-row">
-                  <div className="flex-1 space-y-3">
+                <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+                  <div className="space-y-3">
                     <div className="rounded-2xl border border-slate-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
@@ -1446,6 +1403,39 @@ export default function Home() {
                           <ArrowUpTrayIcon className="size-3.5" />
                           Replace
                         </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-slate-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-slate-900">
+                          JSON Fields
+                        </h3>
+                        <span className="text-xs text-slate-500">
+                          {selectedLeafNodes.length || allLeafNodes.length} fields
+                        </span>
+                      </div>
+                      <div className="mt-3">
+                        <div className="relative">
+                          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
+                          <input
+                            type="search"
+                            placeholder="Search fields..."
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-4 max-h-[460px] overflow-y-auto pr-2">
+                        {filteredTree.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
+                            Upload a JSON file to view its structure.
+                          </div>
+                        ) : (
+                          <div className="space-y-3">{renderTree(filteredTree)}</div>
+                        )}
                       </div>
                     </div>
                     <div className="rounded-2xl border border-slate-200 p-4">
@@ -1498,37 +1488,6 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex-1 rounded-2xl border border-slate-200 p-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-slate-900">
-                        JSON Fields
-                      </h3>
-                      <span className="text-xs text-slate-500">
-                        {selectedLeafNodes.length || allLeafNodes.length} fields
-                      </span>
-                    </div>
-                    <div className="mt-3">
-                      <div className="relative">
-                        <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
-                        <input
-                          type="search"
-                          placeholder="Search fields..."
-                          value={searchQuery}
-                          onChange={(event) => setSearchQuery(event.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-4 max-h-[460px] overflow-y-auto pr-2">
-                      {filteredTree.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
-                          Upload a JSON file to view its structure.
-                        </div>
-                      ) : (
-                        <div className="space-y-3">{renderTree(filteredTree)}</div>
-                      )}
-                    </div>
-                  </div>
                 </div>
                 <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
                   Extraction identifies structured fields and their corresponding
@@ -1550,50 +1509,12 @@ export default function Home() {
                     Structured
                   </span>
                 </div>
-                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-100">
-                  <table className="min-w-full divide-y divide-slate-100 text-sm">
-                    <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      <tr>
-                        <th className="px-4 py-3">Field</th>
-                        <th className="px-4 py-3">Original Value</th>
-                        <th className="px-4 py-3">Cleansed Value</th>
-                        <th className="px-4 py-3">Rules Applied</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-slate-700">
-                      {extractionRows.map((row) => (
-                        <tr key={row.path}>
-                          <td className="px-4 py-3 font-semibold">{row.field}</td>
-                          <td className="px-4 py-3">{row.originalValue}</td>
-                          <td className="px-4 py-3">{row.cleansedValue}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap gap-1.5">
-                              {row.appliedRules.map((rule) => (
-                                <span
-                                  key={`${row.path}-${rule}`}
-                                  className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600"
-                                >
-                                  <CheckCircleIcon className="size-3 text-emerald-500" />
-                                  {rule}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {extractionRows.length === 0 && (
-                    <div className="p-6 text-center text-sm text-slate-500">
-                      Select one or more fields on the left to preview cleansed data.
-                    </div>
-                  )}
-                </div>
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm">
+                <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-col gap-2 text-sm">
+                    <p className="font-semibold text-slate-900">Actions</p>
                     <FeedbackPill feedback={cleansingFeedback} />
                   </div>
-                  <div className="flex flex-col gap-3 sm:flex-row">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <button
                       type="button"
                       onClick={handleBackToSelection}
@@ -1617,6 +1538,36 @@ export default function Home() {
                         : "Send to Cleansing"}
                     </button>
                   </div>
+                </div>
+                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-100">
+                  <div className="grid grid-cols-[220px_minmax(0,1fr)] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <div className="px-4 py-3">Field</div>
+                    <div className="px-4 py-3">Original Value</div>
+                  </div>
+                  {extractionRows.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-slate-500">
+                      Select one or more fields on the left to preview their values.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {extractionRows.map((row) => (
+                        <div
+                          key={row.path}
+                          className="grid grid-cols-[220px_minmax(0,1fr)]"
+                        >
+                          <div className="bg-slate-50/40 px-4 py-3">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {row.field}
+                            </p>
+                            <p className="text-xs text-slate-500">{row.path}</p>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p className="text-sm text-slate-700">{row.originalValue}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

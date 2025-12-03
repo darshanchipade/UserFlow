@@ -23,9 +23,15 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api")
@@ -175,12 +181,23 @@ private String deriveSourceIdentifier(MultipartFile file) {
             @ApiResponse(responseCode = "200", description = "Status not found", content = @Content)
     })
     @GetMapping("/cleansed-data-status/{id}")
-    public String getStatus(
+    public ResponseEntity<String> getStatus(
             @Parameter(description = "UUID of the cleansed data entry", required = true)
             @PathVariable UUID id) {
         return cleansedDataStoreRepository.findById(id)
-                .map(store -> normalizeStatus(store.getStatus()))
-                .orElse("NOT_FOUND");
+                .map(store -> {
+                    ObjectNode responseJson = objectMapper.createObjectNode();
+                    responseJson.put("cleansedDataStoreId", store.getId().toString());
+                    responseJson.put("status", normalizeStatus(store.getStatus()));
+                    responseJson.set("fields", objectMapper.valueToTree(buildEnrichedFieldsPayload(store)));
+                    return ResponseEntity.ok(responseJson.toString());
+                })
+                .orElseGet(() -> {
+                    ObjectNode responseJson = objectMapper.createObjectNode();
+                    responseJson.put("status", "NOT_FOUND");
+                    responseJson.put("message", "CleansedDataStore ID not found: " + id);
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(responseJson.toString());
+                });
     }
 
     private ResponseEntity<String> handleIngestionAndTriggerEnrichment(CleansedDataStore cleansedDataEntry, String identifierForLog) {
@@ -244,6 +261,165 @@ private String deriveSourceIdentifier(MultipartFile file) {
         }
         return status;
     }
+
+    private List<EnrichedFieldResponse> buildEnrichedFieldsPayload(CleansedDataStore store) {
+        if (store == null || store.getCleansedItems() == null || store.getCleansedItems().isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        AtomicInteger counter = new AtomicInteger(1);
+        List<EnrichedFieldResponse> responses = new ArrayList<>();
+        for (Object rawItem : store.getCleansedItems()) {
+            if (!(rawItem instanceof Map<?, ?>)) {
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> item = (Map<String, Object>) rawItem;
+
+            String id = coalesceToString(
+                    item.get("contentHash"),
+                    item.get("id"),
+                    store.getId() != null ? store.getId().toString() + "-" + counter.get() : null,
+                    "field-" + counter.get());
+            String fieldName = coalesceToString(item.get("originalFieldName"), item.get("itemType"), "field");
+            String path = coalesceToString(item.get("usagePath"), item.get("sourcePath"), fieldName);
+            String originalValue = coalesceToString(
+                    item.get("originalValue"),
+                    item.get("rawContent"),
+                    item.get("rawContentText"),
+                    item.get("cleansedContent"));
+            String enrichedValue = coalesceToString(
+                    item.get("enrichedValue"),
+                    item.get("cleansedContent"),
+                    originalValue);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> context =
+                    (item.get("context") instanceof Map<?, ?>) ? (Map<String, Object>) item.get("context") : null;
+
+            List<String> tags = deriveTags(fieldName, item, context);
+            List<String> examples = deriveExamples(enrichedValue, path);
+
+            responses.add(new EnrichedFieldResponse(
+                    id,
+                    fieldName,
+                    path,
+                    safeString(originalValue),
+                    safeString(enrichedValue),
+                    tags,
+                    examples));
+            counter.incrementAndGet();
+        }
+        return responses;
+    }
+
+    private List<String> deriveTags(String fieldName, Map<String, Object> item, Map<String, Object> context) {
+        List<String> tags = new ArrayList<>();
+        addTag(tags, fieldName);
+        addTag(tags, coalesceToString(item.get("itemType"), item.get("model")));
+        if (context != null) {
+            addTag(tags, coalesceToString(context.get("sectionName"), context.get("sectionKey")));
+            addTag(tags, coalesceToString(context.get("language"), context.get("locale")));
+            addTag(tags, coalesceToString(context.get("country")));
+        }
+        return tags.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .limit(6)
+                .collect(Collectors.toList());
+    }
+
+    private void addTag(List<String> tags, String candidate) {
+        if (candidate != null && !candidate.isBlank()) {
+            tags.add(candidate);
+        }
+    }
+
+    private List<String> deriveExamples(String enrichedValue, String path) {
+        if (enrichedValue == null || enrichedValue.isBlank()) {
+            return Collections.emptyList();
+        }
+        String summary = truncate(enrichedValue, 140);
+        String location = path != null ? path : "content";
+        return List.of("Example: " + summary, "Usage: " + location);
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, Math.max(0, maxLength - 1)).trim() + "…";
+    }
+
+    private String coalesceToString(Object... candidates) {
+        for (Object candidate : candidates) {
+            if (candidate instanceof String str && !str.isBlank()) {
+                return str;
+            }
+        }
+        return null;
+    }
+
+    private String safeString(String value) {
+        return value != null ? value : "";
+    }
+
+    private static class EnrichedFieldResponse {
+        private final String id;
+        private final String field;
+        private final String path;
+        private final String originalValue;
+        private final String enrichedValue;
+        private final List<String> tags;
+        private final List<String> examples;
+
+        EnrichedFieldResponse(
+                String id,
+                String field,
+                String path,
+                String originalValue,
+                String enrichedValue,
+                List<String> tags,
+                List<String> examples) {
+            this.id = id;
+            this.field = field;
+            this.path = path;
+            this.originalValue = originalValue;
+            this.enrichedValue = enrichedValue;
+            this.tags = tags;
+            this.examples = examples;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public String getField() {
+            return field;
+        }
+
+        public String getPath() {
+            return path;
+        }
+
+        public String getOriginalValue() {
+            return originalValue;
+        }
+
+        public String getEnrichedValue() {
+            return enrichedValue;
+        }
+
+        public List<String> getTags() {
+            return tags;
+        }
+
+        public List<String> getExamples() {
+            return examples;
+        }
+    }
 }
 
     @PostMapping("/cleanse-only")
@@ -268,6 +444,7 @@ private String deriveSourceIdentifier(MultipartFile file) {
             responseJson.put("cleansedDataStoreId", cleansedDataEntry.getId().toString());
             responseJson.put("status", cleansedDataEntry.getStatus());
             responseJson.put("message", "Cleansing complete. Enrichment not started.");
+            responseJson.set("fields", objectMapper.valueToTree(buildEnrichedFieldsPayload(cleansedDataEntry)));
 
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(responseJson.toString());
 
@@ -300,8 +477,13 @@ private String deriveSourceIdentifier(MultipartFile file) {
                         }
                     }).start();
 
-                    return ResponseEntity.status(HttpStatus.ACCEPTED)
-                            .body("Enrichment started for CleansedDataStore ID: " + id);
+                    ObjectNode responseJson = objectMapper.createObjectNode();
+                    responseJson.put("cleansedDataStoreId", store.getId().toString());
+                    responseJson.put("status", "ENRICHMENT_IN_PROGRESS");
+                    responseJson.put("message", "Enrichment started for CleansedDataStore ID: " + id);
+                    responseJson.set("fields", objectMapper.valueToTree(buildEnrichedFieldsPayload(store)));
+
+                    return ResponseEntity.status(HttpStatus.ACCEPTED).body(responseJson.toString());
                 })
                 .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body("CleansedDataStore ID not found: " + id));

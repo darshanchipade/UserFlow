@@ -225,6 +225,17 @@ const gatherLeafNodes = (node: TreeNode): TreeNode[] => {
   return node.children.flatMap((child) => gatherLeafNodes(child));
 };
 
+const findNodeById = (nodes: TreeNode[], id: string): TreeNode | null => {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    if (node.children) {
+      const found = findNodeById(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
 const filterTree = (nodes: TreeNode[], query: string): TreeNode[] => {
   if (!query) return nodes;
   const normalized = query.toLowerCase();
@@ -354,6 +365,7 @@ export default function Home() {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [activeNodePath, setActiveNodePath] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [historySearch, setHistorySearch] = useState("");
   const [apiPayload, setApiPayload] = useState("");
@@ -381,15 +393,21 @@ export default function Home() {
     return treeNodes.flatMap((node) => gatherLeafNodes(node));
   }, [treeNodes]);
 
+  const previewSourceNode = useMemo(() => {
+    if (!treeNodes.length) return null;
+    if (!activeNodePath) return treeNodes[0];
+    return findNodeById(treeNodes, activeNodePath) ?? treeNodes[0];
+  }, [treeNodes, activeNodePath]);
+
   const extractionRows = useMemo(() => {
-    if (!treeNodes.length) return [];
-    const sourceRows = allLeafNodes.slice(0, 12);
-    return sourceRows.map((leaf) => ({
+    if (!previewSourceNode) return [];
+    const leaves = gatherLeafNodes(previewSourceNode);
+    return leaves.map((leaf) => ({
       field: leaf.label,
       originalValue: formatNodeValue(leaf.value),
       path: leaf.path,
     }));
-  }, [allLeafNodes, treeNodes]);
+  }, [previewSourceNode]);
 
   const canExtract = allLeafNodes.length > 0;
   const isExtractionView = currentStage !== "ingestion";
@@ -453,6 +471,7 @@ export default function Home() {
           setUploadedJsonPayload(parsed);
           setActiveFileName(file.name);
           setFileMetadata(buildMetadataFromFile(file));
+          setActiveNodePath(rootNode.id);
           setCurrentStage("ingestion");
         }
       }
@@ -614,6 +633,7 @@ export default function Home() {
     setFileMetadata(
       buildMetadataFromPayload("API Payload", toByteLength(payloadString), "API Endpoint"),
     );
+    setActiveNodePath(rootNode.id);
     setCurrentStage("ingestion");
 
     setApiFeedback({ state: "loading" });
@@ -832,6 +852,7 @@ export default function Home() {
     nodes.map((node) => {
       const hasChildren = Boolean(node.children?.length);
       const expanded = expandedNodes.has(node.id);
+    const isActive = (activeNodePath ?? treeNodes[0]?.id) === node.id;
       const matchesSearch =
         searchQuery && node.label.toLowerCase().includes(searchQuery.toLowerCase());
       const badge =
@@ -847,6 +868,7 @@ export default function Home() {
             className={clsx(
               "flex items-center gap-2 rounded-lg px-2 py-1.5",
               matchesSearch ? "bg-indigo-50" : "bg-transparent",
+              isActive && "ring-1 ring-indigo-200 bg-indigo-50/60",
             )}
           >
             {hasChildren ? (
@@ -865,18 +887,24 @@ export default function Home() {
             ) : (
               <span className="size-4" />
             )}
-            <span
-              className={clsx(
-                "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                badge.className,
-              )}
+            <button
+              type="button"
+              onClick={() => setActiveNodePath(node.id)}
+              className="flex flex-1 items-center gap-2 text-left"
             >
-              {badge.label}
-            </span>
-            <div className="flex flex-col">
-              <span className="text-sm font-medium text-slate-900">{node.label}</span>
-              <span className="text-xs text-slate-500">{node.path}</span>
-            </div>
+              <span
+                className={clsx(
+                  "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                  badge.className,
+                )}
+              >
+                {badge.label}
+              </span>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-slate-900">{node.label}</span>
+                <span className="text-xs text-slate-500">{node.path}</span>
+              </div>
+            </button>
           </div>
           {hasChildren && expanded && (
             <div className="border-l border-slate-100 pl-4">

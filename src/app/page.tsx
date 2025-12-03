@@ -40,6 +40,7 @@ type TreeNode = {
   path: string;
   type: "object" | "array" | "value";
   children?: TreeNode[];
+  value?: string;
 };
 
 type ApiFeedback = {
@@ -102,6 +103,26 @@ const safeJsonParse = (value: string) => {
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const summarizeNodeValue = (value: unknown): string => {
+  if (value === null) return "null";
+  if (typeof value === "string") {
+    return value.length > 160 ? `${value.slice(0, 157)}…` : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (Array.isArray(value)) {
+    return `Array (${value.length})`;
+  }
+  if (isPlainObject(value)) {
+    return "Object";
+  }
+  return String(value);
+};
+
 const buildTreeFromJson = (
   payload: unknown,
   parentPath: string[],
@@ -117,17 +138,20 @@ const buildTreeFromJson = (
       if (counter.value >= MAX_TREE_NODES) return [];
 
       const childNodes = buildTreeFromJson(entry, [...parentPath, label], counter);
+      const type = Array.isArray(entry)
+        ? "array"
+        : isPlainObject(entry)
+          ? "object"
+          : "value";
+      const isLeaf = type === "value";
       return [
         {
           id,
           label,
           path: id,
-          type: Array.isArray(entry)
-            ? "array"
-            : isPlainObject(entry)
-              ? "object"
-              : "value",
-          children: childNodes.length ? childNodes : undefined,
+          type,
+          children: !isLeaf && childNodes.length ? childNodes : undefined,
+          value: isLeaf ? summarizeNodeValue(entry) : undefined,
         },
       ];
     });
@@ -139,17 +163,20 @@ const buildTreeFromJson = (
       const id = [...parentPath, key].join(".");
       counter.value += 1;
       const childNodes = buildTreeFromJson(value, [...parentPath, key], counter);
+      const type = Array.isArray(value)
+        ? "array"
+        : isPlainObject(value)
+          ? "object"
+          : "value";
+      const isLeaf = type === "value";
       return [
         {
           id,
           label: key,
           path: id,
-          type: Array.isArray(value)
-            ? "array"
-            : isPlainObject(value)
-              ? "object"
-              : "value",
-          children: childNodes.length ? childNodes : undefined,
+          type,
+          children: !isLeaf && childNodes.length ? childNodes : undefined,
+          value: isLeaf ? summarizeNodeValue(value) : undefined,
         },
       ];
     });
@@ -415,16 +442,19 @@ export default function Home() {
 
         const counter = { value: 0 };
         const children = buildTreeFromJson(parsed, [], counter);
+        const rootType = Array.isArray(parsed)
+          ? "array"
+          : isPlainObject(parsed)
+            ? "object"
+            : "value";
+        const rootIsLeaf = rootType === "value";
         const rootNode: TreeNode = {
           id: file.name,
           label: file.name,
           path: file.name,
-          type: Array.isArray(parsed)
-            ? "array"
-            : isPlainObject(parsed)
-              ? "object"
-              : "value",
-          children: children.length ? children : undefined,
+          type: rootType,
+          children: !rootIsLeaf && children.length ? children : undefined,
+          value: rootIsLeaf ? summarizeNodeValue(parsed) : undefined,
         };
 
         setTreeNodes([rootNode]);
@@ -810,7 +840,14 @@ export default function Home() {
                 {node.label}
               </span>
               {!hasChildren && (
-                <span className="text-xs text-slate-500">{node.path}</span>
+                <>
+                  <span className="text-[11px] text-slate-500">{node.path}</span>
+                  {node.value !== undefined && (
+                    <span className="text-xs font-mono text-slate-600 truncate">
+                      {node.value}
+                    </span>
+                  )}
+                </>
               )}
             </div>
           </div>

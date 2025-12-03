@@ -48,13 +48,23 @@ type ApiFeedback = {
   message?: string;
 };
 
-const steps = [
-  { label: "Ingestion", status: "current" as const },
-  { label: "Extraction", status: "upcoming" as const },
-  { label: "Cleansing", status: "upcoming" as const },
-  { label: "Data Enrichment", status: "upcoming" as const },
-  { label: "Content QA", status: "upcoming" as const },
-];
+type Stage = "ingestion" | "extraction";
+
+const workflowSteps = [
+  "Ingestion",
+  "Extraction",
+  "Cleansing",
+  "Data Enrichment",
+  "Content QA",
+] as const;
+
+type WorkflowStep = (typeof workflowSteps)[number];
+type StepStatus = "complete" | "current" | "upcoming";
+
+const stageIndexMap: Record<Stage, number> = {
+  ingestion: 0,
+  extraction: 1,
+};
 
 const uploadTabs = [
   {
@@ -371,6 +381,7 @@ export default function Home() {
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
+  const [stage, setStage] = useState<Stage>("ingestion");
   const [extractedFileName, setExtractedFileName] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [historySearch, setHistorySearch] = useState("");
@@ -382,6 +393,19 @@ export default function Home() {
   const [s3Feedback, setS3Feedback] = useState<ApiFeedback>({
     state: "idle",
   });
+
+  const workflowTimeline = useMemo(() => {
+    const currentIndex = stageIndexMap[stage];
+    return workflowSteps.map((label, index) => ({
+      label,
+      status:
+        index < currentIndex
+          ? ("complete" as StepStatus)
+          : index === currentIndex
+            ? ("current" as StepStatus)
+            : ("upcoming" as StepStatus),
+    }));
+  }, [stage]);
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
@@ -405,8 +429,57 @@ export default function Home() {
     );
   }, [uploads, historySearch]);
 
+  const canExtract = selectedLeafNodes.length > 0;
+  const latestUpload = uploads[0];
+  const latestUploadTime = latestUpload
+    ? new Date(latestUpload.createdAt).toLocaleString()
+    : new Date().toLocaleString();
+  const extractionEntries = selectedLeafNodes.map((leaf, index) => ({
+    id: leaf.id,
+    label: leaf.label,
+    path: leaf.path,
+    value: leaf.value ?? "—",
+    order: index + 1,
+  }));
+  const extractionTimelineEntries = [
+    {
+      title: "Upload received",
+      detail: latestUploadTime,
+      state: "complete" as StepStatus,
+    },
+    {
+      title: "Fields selected",
+      detail: `${selectedLeafNodes.length} data points mapped`,
+      state: "complete" as StepStatus,
+    },
+    {
+      title: "Ready for cleansing",
+      detail: "Awaiting enrichment trigger",
+      state: "current" as StepStatus,
+    },
+  ];
+  const extractionSummary = [
+    {
+      label: "Source file",
+      value: extractedFileName ?? latestUpload?.name ?? "—",
+    },
+    {
+      label: "Selected fields",
+      value: `${selectedLeafNodes.length}`,
+    },
+    {
+      label: "Captured on",
+      value: latestUploadTime,
+    },
+    {
+      label: "Readiness",
+      value: canExtract ? "Ready for cleansing" : "Awaiting selection",
+    },
+  ];
+
   const handleFileSelection = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    setStage("ingestion");
 
     Array.from(files).forEach(async (file) => {
       const uploadId = crypto.randomUUID();
@@ -570,6 +643,15 @@ export default function Home() {
       });
       return next;
     });
+  };
+
+  const handleExtractData = () => {
+    if (!canExtract) return;
+    setStage("extraction");
+  };
+
+  const handleBackToSelection = () => {
+    setStage("ingestion");
   };
 
   const submitApiPayload = async (event: FormEvent<HTMLFormElement>) => {
@@ -884,19 +966,21 @@ export default function Home() {
             </div>
           </div>
           <nav className="flex flex-1 justify-end gap-2 text-sm font-medium text-slate-500">
-            {steps.map((step, index) => (
+            {workflowTimeline.map((step, index) => (
               <div key={step.label} className="flex items-center gap-2">
                 <span
                   className={clsx(
                     "rounded-full px-3 py-1",
                     step.status === "current"
                       ? "bg-indigo-50 text-indigo-600"
-                      : "bg-slate-50",
+                      : step.status === "complete"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-slate-50",
                   )}
                 >
                   {step.label}
                 </span>
-                {index < steps.length - 1 && (
+                {index < workflowTimeline.length - 1 && (
                   <span className="text-slate-300">—</span>
                 )}
               </div>
@@ -905,7 +989,8 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      {stage === "ingestion" ? (
+        <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <section className="space-y-6">
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1263,13 +1348,168 @@ export default function Home() {
             </div>
             <button
               type="button"
-              className="mt-4 w-full rounded-full bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-black"
+              onClick={handleExtractData}
+              disabled={!canExtract}
+              className={clsx(
+                "mt-4 w-full rounded-full py-2.5 text-sm font-semibold shadow-sm transition",
+                canExtract
+                  ? "bg-slate-900 text-white hover:bg-black"
+                  : "cursor-not-allowed bg-slate-200 text-slate-500",
+              )}
             >
-              Extract Data
+              Continue to Extraction
             </button>
           </div>
         </section>
       </main>
+    ) : (
+      <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <section className="space-y-6">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-400">
+                  Extraction
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-900">
+                  Data ready for cleansing
+                </h2>
+                <p className="text-sm text-slate-500">
+                  {selectedLeafNodes.length} fields selected from{" "}
+                  {extractedFileName ?? "the uploaded file"}. Review the mapped values
+                  before triggering the cleansing pipeline.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleBackToSelection}
+                  className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-600"
+                >
+                  Refine selection
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                >
+                  Send to Cleansing
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              {extractionSummary.map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                >
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    {item.label}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-400">
+                  Field breakdown
+                </p>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Extracted attributes
+                </h3>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                {selectedLeafNodes.length} mapped fields
+              </span>
+            </div>
+            <div className="mt-4 max-h-[520px] overflow-y-auto rounded-2xl border border-slate-100">
+              {extractionEntries.length === 0 ? (
+                <div className="px-4 py-10 text-center text-sm text-slate-500">
+                  No fields selected. Return to the previous step to choose fields.
+                </div>
+              ) : (
+                extractionEntries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex flex-wrap items-center gap-4 border-b border-slate-100 px-4 py-3 last:border-0"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white">
+                      {entry.order.toString().padStart(2, "0")}
+                    </div>
+                    <div className="min-w-[180px] flex-1">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {entry.label}
+                      </p>
+                      <p className="text-xs text-slate-500">{entry.path}</p>
+                    </div>
+                    <div className="min-w-[200px] flex-1">
+                      <p className="truncate text-sm font-mono text-slate-700">
+                        {entry.value}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                      Ready
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Timeline
+              </p>
+              <h3 className="text-lg font-semibold text-slate-900">
+                Extraction status
+              </h3>
+            </div>
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600">
+              In progress
+            </span>
+          </div>
+          <div className="space-y-4">
+            {extractionTimelineEntries.map((item) => (
+              <div
+                key={item.title}
+                className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <div
+                  className={clsx(
+                    "flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold",
+                    item.state === "complete"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-indigo-100 text-indigo-700",
+                  )}
+                >
+                  {item.state === "complete" ? "✓" : "•"}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {item.title}
+                  </p>
+                  <p className="text-xs text-slate-500">{item.detail}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-600">
+            Cleansing and enrichment can be triggered at any time. Use{" "}
+            <span className="font-semibold text-slate-900">Send to Cleansing</span>{" "}
+            to push this snapshot into the downstream workflow.
+          </div>
+        </section>
+      </main>
+    )}
     </div>
   );
 }

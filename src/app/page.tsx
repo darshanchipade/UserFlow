@@ -427,6 +427,7 @@ export default function Home() {
   const [enrichmentStatus, setEnrichmentStatus] = useState<string | null>(null);
   const [enrichmentMessage, setEnrichmentMessage] = useState<string | null>(null);
   const [enrichmentJobChecking, setEnrichmentJobChecking] = useState(false);
+  const [enrichedFields, setEnrichedFields] = useState<EnrichedField[]>([]);
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
@@ -454,45 +455,87 @@ export default function Home() {
     }));
   }, [previewSourceNode]);
 
-  const enrichedFields = useMemo<EnrichedField[]>(() => {
-    if (!extractionRows.length) return [];
-    return extractionRows.map((row, index) => {
-      const segments = row.path.split(".").filter(Boolean);
-      const tags =
-        segments.length > 0
-          ? segments
-              .slice(-3)
-              .map((segment) =>
-                segment
-                  .replace(/\[\d+\]/g, "")
-                  .replace(/[_]/g, " ")
-                  .trim(),
-              )
-              .filter(Boolean)
-          : ["auto-tagged"];
-      const normalizedValue = row.originalValue || "—";
-      const trimmedValue =
-        normalizedValue.length > 140
-          ? `${normalizedValue.slice(0, 137).trimEnd()}…`
-          : normalizedValue;
-      const exampleSeed =
-        trimmedValue.length > 80
-          ? `${trimmedValue.slice(0, 77).trimEnd()}…`
-          : trimmedValue;
-      return {
-        id: `${row.path}-${index}`,
-        field: row.field,
-        path: row.path,
-        originalValue: normalizedValue,
-        enrichedValue: trimmedValue,
-        tags: tags.length ? tags : ["core field"],
-        examples: [
-          `Sample: ${exampleSeed}`,
-          `Alt example: ${exampleSeed.toUpperCase().slice(0, 60)}`,
-        ],
-      };
-    });
-  }, [extractionRows]);
+  const stringifyEnrichmentValue = (value: unknown) => {
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    if (value === null || value === undefined) return "";
+    return formatNodeValue(value);
+  };
+
+  const extractEnrichedFields = (payload: unknown): EnrichedField[] => {
+    if (!payload || typeof payload !== "object") return [];
+    const container = payload as Record<string, unknown>;
+    const collection = Array.isArray(container.fields)
+      ? (container.fields as unknown[])
+      : Array.isArray(container.enrichedFields)
+        ? (container.enrichedFields as unknown[])
+        : null;
+    if (!collection) return [];
+    return collection
+      .map((entry, index) => {
+        if (!entry || typeof entry !== "object") return null;
+        const record = entry as Record<string, unknown>;
+        const fieldName =
+          typeof record.field === "string"
+            ? record.field
+            : typeof record.label === "string"
+              ? record.label
+              : null;
+        if (!fieldName) return null;
+        const path =
+          typeof record.path === "string"
+            ? record.path
+            : typeof record.identifier === "string"
+              ? record.identifier
+              : fieldName;
+        const tags = Array.isArray(record.tags)
+          ? (record.tags as unknown[]).filter(
+              (tag): tag is string => typeof tag === "string" && tag.trim().length > 0,
+            )
+          : [];
+        const examples = Array.isArray(record.examples)
+          ? (record.examples as unknown[]).filter(
+              (example): example is string =>
+                typeof example === "string" && example.trim().length > 0,
+            )
+          : [];
+        return {
+          id:
+            typeof record.id === "string"
+              ? record.id
+              : `${path}-${index.toString().padStart(3, "0")}`,
+          field: fieldName,
+          path,
+          originalValue: stringifyEnrichmentValue(
+            record.originalValue ?? record.sourceValue ?? "",
+          ),
+          enrichedValue: stringifyEnrichmentValue(
+            record.enrichedValue ?? record.cleansedValue ?? record.value ?? "",
+          ),
+          tags,
+          examples,
+        };
+      })
+      .filter(Boolean) as EnrichedField[];
+  };
+
+  const deriveEnrichedFieldsFromResponse = (
+    body: unknown,
+    rawBody: unknown,
+  ): EnrichedField[] => {
+    const fromBody = extractEnrichedFields(body);
+    if (fromBody.length) return fromBody;
+    if (typeof rawBody === "string") {
+      const parsed = safeJsonParse(rawBody);
+      if (parsed) {
+        const fromRaw = extractEnrichedFields(parsed);
+        if (fromRaw.length) return fromRaw;
+      }
+    }
+    return [];
+  };
 
   const rootNodeId = treeNodes[0]?.id ?? null;
   const canExtract = allLeafNodes.length > 0;
@@ -531,6 +574,7 @@ export default function Home() {
     setEnrichmentStatus(null);
     setEnrichmentMessage(null);
     setEnrichmentJobChecking(false);
+    setEnrichedFields([]);
     setCurrentStage("ingestion");
 
     Array.from(files).forEach(async (file) => {
@@ -650,6 +694,7 @@ export default function Home() {
     setEnrichmentStatus(null);
     setEnrichmentMessage(null);
     setEnrichmentJobChecking(false);
+    setEnrichedFields([]);
   };
 
   const sendToCleansing = async () => {
@@ -667,6 +712,7 @@ export default function Home() {
     setEnrichmentStatus(null);
     setEnrichmentMessage(null);
     setEnrichmentJobChecking(false);
+    setEnrichedFields([]);
     try {
       const response = await fetch("/api/ingestion/payload", {
         method: "POST",
@@ -782,6 +828,10 @@ export default function Home() {
         body: JSON.stringify({ id: cleansingJob.id }),
       });
       const payload = await response.json();
+      const body =
+        typeof payload.body === "object" && payload.body !== null
+          ? (payload.body as Record<string, unknown>)
+          : null;
       setEnrichmentFeedback({
         state: response.ok ? "success" : "error",
         message: response.ok
@@ -790,8 +840,8 @@ export default function Home() {
       });
       if (response.ok) {
         const statusValue =
-          typeof payload.body === "object" && payload.body !== null
-            ? ((payload.body as Record<string, unknown>).status as string | undefined)
+          body && typeof body["status"] === "string"
+            ? (body["status"] as string)
             : typeof payload.body === "string"
               ? (payload.body as string)
               : undefined;
@@ -803,6 +853,10 @@ export default function Home() {
               ? (payload.body as string)
               : undefined,
         );
+        const nextFields = deriveEnrichedFieldsFromResponse(body, payload.rawBody);
+        if (nextFields.length) {
+          setEnrichedFields(nextFields);
+        }
         setEnrichmentJobChecking(false);
         setCleansingJob((previous) =>
           previous
@@ -832,12 +886,18 @@ export default function Home() {
         `/api/ingestion/status?id=${encodeURIComponent(cleansingJob.id)}`,
       );
       const payload = await response.json();
+      const body =
+        typeof payload.body === "object" && payload.body !== null
+          ? (payload.body as Record<string, unknown>)
+          : null;
       const statusValue =
         typeof payload.status === "string"
           ? payload.status
-          : typeof payload.body === "string"
-            ? payload.body
-            : undefined;
+          : body && typeof body["status"] === "string"
+            ? (body["status"] as string)
+            : typeof payload.body === "string"
+              ? (payload.body as string)
+              : undefined;
       setEnrichmentStatus(statusValue ?? enrichmentStatus);
       setEnrichmentMessage(
         typeof payload.rawBody === "string"
@@ -846,6 +906,10 @@ export default function Home() {
             ? (payload.body as string)
             : enrichmentMessage,
       );
+      const nextFields = deriveEnrichedFieldsFromResponse(body, payload.rawBody);
+      if (nextFields.length) {
+        setEnrichedFields(nextFields);
+      }
       setEnrichmentJobChecking(false);
       setCleansingJob((previous) =>
         previous
@@ -915,6 +979,13 @@ export default function Home() {
     );
     setActiveNodePath(rootNode.id);
     setCurrentStage("ingestion");
+    setCleansingFeedback({ state: "idle" });
+    setCleansingJob(null);
+    setEnrichmentFeedback({ state: "idle" });
+    setEnrichmentStatus(null);
+    setEnrichmentMessage(null);
+    setEnrichmentJobChecking(false);
+    setEnrichedFields([]);
 
     setApiFeedback({ state: "loading" });
     const uploadId = crypto.randomUUID();
@@ -1019,6 +1090,13 @@ export default function Home() {
       },
       ...previous,
     ]);
+    setCleansingFeedback({ state: "idle" });
+    setCleansingJob(null);
+    setEnrichmentFeedback({ state: "idle" });
+    setEnrichmentStatus(null);
+    setEnrichmentMessage(null);
+    setEnrichmentJobChecking(false);
+    setEnrichedFields([]);
 
     try {
       const response = await fetch("/api/ingestion/s3", {

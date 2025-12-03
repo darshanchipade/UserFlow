@@ -39,21 +39,38 @@ type TreeNode = {
   label: string;
   path: string;
   type: "object" | "array" | "value";
+  value?: unknown;
   children?: TreeNode[];
 };
+
+type Stage = "ingestion" | "extraction" | "cleansing";
 
 type ApiFeedback = {
   state: "idle" | "loading" | "success" | "error";
   message?: string;
 };
 
-const steps = [
-  { label: "Ingestion", status: "current" as const },
-  { label: "Extraction", status: "upcoming" as const },
-  { label: "Cleansing", status: "upcoming" as const },
-  { label: "Data Enrichment", status: "upcoming" as const },
-  { label: "Content QA", status: "upcoming" as const },
-];
+const stageOrder = [
+  "Ingestion",
+  "Extraction",
+  "Cleansing",
+  "Data Enrichment",
+  "Content QA",
+] as const;
+
+const stageIndexByStage: Record<Stage, number> = {
+  ingestion: 0,
+  extraction: 1,
+  cleansing: 2,
+};
+
+const getStepStatus = (label: (typeof stageOrder)[number], stage: Stage) => {
+  const currentIndex = stageIndexByStage[stage];
+  const stepIndex = stageOrder.indexOf(label);
+  if (stepIndex < currentIndex) return "completed";
+  if (stepIndex === currentIndex) return "current";
+  return "upcoming";
+};
 
 const uploadTabs = [
   {
@@ -117,16 +134,18 @@ const buildTreeFromJson = (
       if (counter.value >= MAX_TREE_NODES) return [];
 
       const childNodes = buildTreeFromJson(entry, [...parentPath, label], counter);
+      const nodeType = Array.isArray(entry)
+        ? "array"
+        : isPlainObject(entry)
+          ? "object"
+          : "value";
       return [
         {
           id,
           label,
           path: id,
-          type: Array.isArray(entry)
-            ? "array"
-            : isPlainObject(entry)
-              ? "object"
-              : "value",
+          type: nodeType,
+          value: nodeType === "value" ? entry : undefined,
           children: childNodes.length ? childNodes : undefined,
         },
       ];
@@ -139,16 +158,18 @@ const buildTreeFromJson = (
       const id = [...parentPath, key].join(".");
       counter.value += 1;
       const childNodes = buildTreeFromJson(value, [...parentPath, key], counter);
+      const nodeType = Array.isArray(value)
+        ? "array"
+        : isPlainObject(value)
+          ? "object"
+          : "value";
       return [
         {
           id,
           label: key,
           path: id,
-          type: Array.isArray(value)
-            ? "array"
-            : isPlainObject(value)
-              ? "object"
-              : "value",
+          type: nodeType,
+          value: nodeType === "value" ? value : undefined,
           children: childNodes.length ? childNodes : undefined,
         },
       ];
@@ -225,6 +246,57 @@ const filterTree = (nodes: TreeNode[], query: string): TreeNode[] => {
   return nodes
     .map(searchNode)
     .filter((node): node is TreeNode => Boolean(node));
+};
+
+const formatNodeValue = (value: unknown): string => {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const applyCleansingRules = (value: unknown) => {
+  if (typeof value !== "string") {
+    return { cleansedValue: value, appliedRules: ["Normalize NBSP"] };
+  }
+
+  const operations = [
+    {
+      label: "Strip HTML Tags",
+      fn: (input: string) => input.replace(/<[^>]+>/g, ""),
+    },
+    {
+      label: "Normalize NBSP",
+      fn: (input: string) => input.replace(/\u00a0/g, " "),
+    },
+    {
+      label: "Collapse Whitespace",
+      fn: (input: string) => input.replace(/\s+/g, " ").trim(),
+    },
+  ];
+
+  let result = value;
+  const applied: string[] = [];
+
+  operations.forEach(({ label, fn }) => {
+    const next = fn(result);
+    if (next !== result) {
+      applied.push(label);
+      result = next;
+    }
+  });
+
+  if (applied.length === 0) {
+    applied.push("Normalize NBSP");
+  }
+
+  return { cleansedValue: result, appliedRules: applied };
 };
 
 const getFileLabel = (fileName: string) => {
@@ -339,6 +411,7 @@ const TreeCheckbox = ({
 
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [currentStage, setCurrentStage] = useState<Stage>("ingestion");
   const [activeTab, setActiveTab] = useState<UploadTab>("local");
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
@@ -354,6 +427,11 @@ export default function Home() {
   const [s3Feedback, setS3Feedback] = useState<ApiFeedback>({
     state: "idle",
   });
+  const [cleansingFeedback, setCleansingFeedback] = useState<ApiFeedback>({
+    state: "idle",
+  });
+  const [activeFileName, setActiveFileName] = useState<string>("Content.JSON");
+  const [uploadedJsonPayload, setUploadedJsonPayload] = useState<unknown>(null);
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
@@ -366,6 +444,44 @@ export default function Home() {
       gatherLeafNodes(node).filter((leaf) => selectedNodes.has(leaf.id)),
     );
   }, [treeNodes, selectedNodes]);
+
+  const allLeafNodes = useMemo(() => {
+    if (!treeNodes.length) return [];
+    return treeNodes.flatMap((node) => gatherLeafNodes(node));
+  }, [treeNodes]);
+
+  const extractionRows = useMemo(() => {
+    if (!treeNodes.length) return [];
+    const sourceRows =
+      selectedLeafNodes.length > 0 ? selectedLeafNodes : allLeafNodes.slice(0, 12);
+    return sourceRows.map((leaf) => {
+      const { cleansedValue, appliedRules } = applyCleansingRules(leaf.value);
+      return {
+        field: leaf.label,
+        originalValue: formatNodeValue(leaf.value),
+        cleansedValue: formatNodeValue(cleansedValue),
+        appliedRules,
+        path: leaf.path,
+      };
+    });
+  }, [selectedLeafNodes, allLeafNodes, treeNodes]);
+
+  const canExtract = extractionRows.length > 0;
+  const isExtractionView = currentStage !== "ingestion";
+  const extractionStatusPill =
+    currentStage === "cleansing"
+      ? {
+          label: "Cleansing ready",
+          className: "bg-emerald-50 text-emerald-700",
+          iconClassName: "text-emerald-500",
+          Icon: CheckCircleIcon,
+        }
+      : {
+          label: "Extraction in progress",
+          className: "bg-amber-50 text-amber-700",
+          iconClassName: "animate-spin",
+          Icon: ArrowPathIcon,
+        };
 
   const filteredUploads = useMemo(() => {
     if (!historySearch) return uploads;
@@ -409,6 +525,9 @@ export default function Home() {
           setTreeNodes([rootNode]);
           setExpandedNodes(new Set([rootNode.id]));
           setSelectedNodes(new Set());
+          setUploadedJsonPayload(parsed);
+          setActiveFileName(file.name);
+          setCurrentStage("ingestion");
         }
       }
 
@@ -479,6 +598,54 @@ export default function Home() {
     handleFileSelection(event.dataTransfer.files);
   };
 
+  const handleEnterExtraction = () => {
+    if (!canExtract) return;
+    setCurrentStage("extraction");
+    setCleansingFeedback({ state: "idle" });
+  };
+
+  const handleBackToSelection = () => {
+    setCurrentStage("ingestion");
+    setCleansingFeedback({ state: "idle" });
+  };
+
+  const sendToCleansing = async () => {
+    if (!uploadedJsonPayload) {
+      setCleansingFeedback({
+        state: "error",
+        message: "Upload or paste a JSON payload to continue.",
+      });
+      return;
+    }
+
+    setCleansingFeedback({ state: "loading" });
+    try {
+      const response = await fetch("/api/ingestion/payload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ payload: uploadedJsonPayload }),
+      });
+      const payload = await response.json();
+      setCleansingFeedback({
+        state: response.ok ? "success" : "error",
+        message: response.ok
+          ? "Sent to cleansing pipeline."
+          : (payload?.error as string) ?? "Backend rejected the request.",
+      });
+      if (response.ok) {
+        setCurrentStage("cleansing");
+      }
+    } catch (error) {
+      setCleansingFeedback({
+        state: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to reach Spring Boot API.",
+      });
+    }
+  };
+
   const toggleNode = (nodeId: string) => {
     setExpandedNodes((previous) => {
       const next = new Set(previous);
@@ -517,6 +684,22 @@ export default function Home() {
       });
       return;
     }
+
+    const counter = { value: 0 };
+    const children = buildTreeFromJson(parsed, [], counter);
+    const rootNode: TreeNode = {
+      id: "API Payload",
+      label: "API Payload",
+      path: "API Payload",
+      type: "object",
+      children,
+    };
+    setTreeNodes([rootNode]);
+    setExpandedNodes(new Set([rootNode.id]));
+    setSelectedNodes(new Set());
+    setUploadedJsonPayload(parsed);
+    setActiveFileName("API Payload");
+    setCurrentStage("ingestion");
 
     setApiFeedback({ state: "loading" });
     const uploadId = crypto.randomUUID();
@@ -788,6 +971,15 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <input
+        id="file-upload"
+        ref={fileInputRef}
+        type="file"
+        className="sr-only"
+        multiple
+        accept=".json,.pdf,.doc,.docx,.xls,.xlsx,application/json"
+        onChange={(event) => handleFileSelection(event.target.files)}
+      />
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div className="flex items-center gap-4">
@@ -810,30 +1002,47 @@ export default function Home() {
             </div>
           </div>
           <nav className="flex flex-1 justify-end gap-2 text-sm font-medium text-slate-500">
-            {steps.map((step, index) => (
-              <div key={step.label} className="flex items-center gap-2">
-                <span
-                  className={clsx(
-                    "rounded-full px-3 py-1",
-                    step.status === "current"
-                      ? "bg-indigo-50 text-indigo-600"
-                      : "bg-slate-50",
+            {stageOrder.map((label, index) => {
+              const status = getStepStatus(label, currentStage);
+              return (
+                <div key={label} className="flex items-center gap-2">
+                  <span
+                    className={clsx(
+                      "inline-flex items-center gap-2 rounded-full px-3 py-1",
+                      status === "current"
+                        ? "bg-indigo-50 text-indigo-600"
+                        : status === "completed"
+                          ? "bg-emerald-50 text-emerald-600"
+                          : "bg-slate-50",
+                    )}
+                  >
+                    {status === "completed" && (
+                      <CheckCircleIcon className="size-4 text-emerald-500" />
+                    )}
+                    {label}
+                  </span>
+                  {index < stageOrder.length - 1 && (
+                    <span className="text-slate-300">—</span>
                   )}
-                >
-                  {step.label}
-                </span>
-                {index < steps.length - 1 && (
-                  <span className="text-slate-300">—</span>
-                )}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </nav>
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <section className="space-y-6">
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <main
+        className={clsx(
+          "mx-auto max-w-6xl px-6 py-8",
+          isExtractionView
+            ? "space-y-6"
+            : "grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]",
+        )}
+      >
+        {!isExtractionView ? (
+          <>
+            <section className="space-y-6">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-400">
@@ -905,15 +1114,6 @@ export default function Home() {
                       JSON, PDF, DOCX or XLS (max 50 MB)
                     </p>
                   </div>
-                  <input
-                    id="file-upload"
-                    ref={fileInputRef}
-                    type="file"
-                    className="sr-only"
-                    multiple
-                    accept=".json,.pdf,.doc,.docx,.xls,.xlsx,application/json"
-                    onChange={(event) => handleFileSelection(event.target.files)}
-                  />
                 </label>
               </div>
             )}
@@ -1124,77 +1324,310 @@ export default function Home() {
                 );
               })}
             </div>
-          </div>
-        </section>
+            </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-400">
-                Selection
-              </p>
-              <h3 className="text-lg font-semibold text-slate-900">
-                Select Items
-              </h3>
-            </div>
-            <span className="text-sm font-semibold text-slate-600">
-              {selectedLeafNodes.length} items
-            </span>
-          </div>
-          <div className="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
-            <InboxStackIcon className="size-4 text-slate-500" />
-            <span className="text-xs font-semibold text-slate-600">
-              Content.JSON
-            </span>
-          </div>
-
-          <div className="mt-4">
-            <div className="relative">
-              <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
-              <input
-                type="search"
-                placeholder="Search fields..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
-              />
-            </div>
-            <div className="mt-4 max-h-[420px] overflow-y-auto pr-2">
-              {filteredTree.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
-                  Upload a JSON file to view its structure.
+            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Selection
+                  </p>
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    Select Items
+                  </h3>
                 </div>
-              ) : (
-                <div className="space-y-3">{renderTree(filteredTree)}</div>
-              )}
-            </div>
-          </div>
+                <span className="text-sm font-semibold text-slate-600">
+                  {selectedLeafNodes.length} items
+                </span>
+              </div>
+              <div className="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+                <InboxStackIcon className="size-4 text-slate-500" />
+                <span className="text-xs font-semibold text-slate-600">
+                  {activeFileName}
+                </span>
+              </div>
 
-          <div className="mt-6 rounded-2xl bg-slate-50 p-4">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-              <span className="font-semibold text-slate-800">Selected:</span>
-              {selectedLeafNodes.slice(0, 6).map((leaf) => (
-                <span
-                  key={leaf.id}
-                  className="rounded-full bg-white px-3 py-1 font-semibold shadow-sm"
+              <div className="mt-4">
+                <div className="relative">
+                  <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
+                  <input
+                    type="search"
+                    placeholder="Search fields..."
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
+                  />
+                </div>
+                <div className="mt-4 max-h-[420px] overflow-y-auto pr-2">
+                  {filteredTree.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
+                      Upload a JSON file to view its structure.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">{renderTree(filteredTree)}</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-2xl bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                  <span className="font-semibold text-slate-800">Selected:</span>
+                  {selectedLeafNodes.slice(0, 6).map((leaf) => (
+                    <span
+                      key={leaf.id}
+                      className="rounded-full bg-white px-3 py-1 font-semibold shadow-sm"
+                    >
+                      {leaf.label}
+                    </span>
+                  ))}
+                  {selectedLeafNodes.length > 6 && (
+                    <span className="rounded-full bg-white px-3 py-1 font-semibold shadow-sm">
+                      +{selectedLeafNodes.length - 6} more
+                    </span>
+                  )}
+                  {selectedLeafNodes.length === 0 && (
+                    <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-500 shadow-sm">
+                      All fields will be extracted
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEnterExtraction}
+                  disabled={!canExtract}
+                  className={clsx(
+                    "mt-4 w-full rounded-full py-2.5 text-sm font-semibold text-white transition",
+                    canExtract
+                      ? "bg-slate-900 hover:bg-black"
+                      : "cursor-not-allowed bg-slate-400",
+                  )}
                 >
-                  {leaf.label}
-                </span>
-              ))}
-              {selectedLeafNodes.length > 6 && (
-                <span className="rounded-full bg-white px-3 py-1 font-semibold shadow-sm">
-                  +{selectedLeafNodes.length - 6} more
-                </span>
-              )}
+                  Extract Data
+                </button>
+              </div>
+            </section>
+          </>
+        ) : (
+          <section className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Extraction
+                    </p>
+                    <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                      File Structure
+                    </h2>
+                  </div>
+                  <span
+                    className={clsx(
+                      "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
+                      extractionStatusPill.className,
+                    )}
+                  >
+                    <extractionStatusPill.Icon
+                      className={clsx("size-3.5", extractionStatusPill.iconClassName)}
+                    />
+                    {extractionStatusPill.label}
+                  </span>
+                </div>
+                <div className="mt-4 flex flex-col gap-4 lg:flex-row">
+                  <div className="flex-1 space-y-3">
+                    <div className="rounded-2xl border border-slate-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-slate-400">
+                            Active File
+                          </p>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {activeFileName}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <ArrowUpTrayIcon className="size-3.5" />
+                          Replace
+                        </button>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 p-4">
+                      <div className="flex items-center justify-between text-sm font-semibold text-slate-900">
+                        <span>Version History</span>
+                        <span className="text-xs font-medium text-slate-500">
+                          File name
+                        </span>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {["Content.JSON", "Content.PDF", "Content.XLS", "Content.DOCX"].map(
+                          (file, index) => (
+                            <div
+                              key={file}
+                              className="flex items-center justify-between rounded-2xl border border-slate-100 px-3 py-2"
+                            >
+                              <div className="flex items-center gap-3">
+                                <span
+                                  className={clsx(
+                                    "rounded-xl px-3 py-1 text-xs font-semibold",
+                                    index === 0
+                                      ? "bg-violet-100 text-violet-700"
+                                      : index === 1
+                                        ? "bg-rose-100 text-rose-700"
+                                        : index === 2
+                                          ? "bg-emerald-100 text-emerald-700"
+                                          : "bg-sky-100 text-sky-700",
+                                  )}
+                                >
+                                  {file.split(".").pop()}
+                                </span>
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">
+                                    {file}
+                                  </p>
+                                  <p className="text-xs text-slate-500">
+                                    Modified 2025-11-17
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600"
+                              >
+                                View
+                              </button>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 rounded-2xl border border-slate-200 p-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        JSON Fields
+                      </h3>
+                      <span className="text-xs text-slate-500">
+                        {selectedLeafNodes.length || allLeafNodes.length} fields
+                      </span>
+                    </div>
+                    <div className="mt-3">
+                      <div className="relative">
+                        <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
+                        <input
+                          type="search"
+                          placeholder="Search fields..."
+                          value={searchQuery}
+                          onChange={(event) => setSearchQuery(event.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-4 max-h-[460px] overflow-y-auto pr-2">
+                      {filteredTree.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
+                          Upload a JSON file to view its structure.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">{renderTree(filteredTree)}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+                  Extraction identifies structured fields and their corresponding
+                  metadata. Use the right pane to confirm the cleansed values before
+                  sending downstream.
+                </div>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Data Preview
+                    </p>
+                    <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                      Data Overview
+                    </h2>
+                  </div>
+                  <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                    Structured
+                  </span>
+                </div>
+                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-100">
+                  <table className="min-w-full divide-y divide-slate-100 text-sm">
+                    <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3">Field</th>
+                        <th className="px-4 py-3">Original Value</th>
+                        <th className="px-4 py-3">Cleansed Value</th>
+                        <th className="px-4 py-3">Rules Applied</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {extractionRows.map((row) => (
+                        <tr key={row.path}>
+                          <td className="px-4 py-3 font-semibold">{row.field}</td>
+                          <td className="px-4 py-3">{row.originalValue}</td>
+                          <td className="px-4 py-3">{row.cleansedValue}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1.5">
+                              {row.appliedRules.map((rule) => (
+                                <span
+                                  key={`${row.path}-${rule}`}
+                                  className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600"
+                                >
+                                  <CheckCircleIcon className="size-3 text-emerald-500" />
+                                  {rule}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {extractionRows.length === 0 && (
+                    <div className="p-6 text-center text-sm text-slate-500">
+                      Select one or more fields on the left to preview cleansed data.
+                    </div>
+                  )}
+                </div>
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm">
+                    <FeedbackPill feedback={cleansingFeedback} />
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={handleBackToSelection}
+                      className="inline-flex items-center justify-center rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+                    >
+                      Back to Selection
+                    </button>
+                    <button
+                      type="button"
+                      onClick={sendToCleansing}
+                      className={clsx(
+                        "inline-flex items-center justify-center rounded-full px-5 py-2 text-sm font-semibold text-white shadow-sm transition",
+                        uploadedJsonPayload
+                          ? "bg-indigo-600 hover:bg-indigo-700"
+                          : "cursor-not-allowed bg-slate-400",
+                      )}
+                      disabled={!uploadedJsonPayload || cleansingFeedback.state === "loading"}
+                    >
+                      {cleansingFeedback.state === "loading"
+                        ? "Sending..."
+                        : "Send to Cleansing"}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <button
-              type="button"
-              className="mt-4 w-full rounded-full bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-black"
-            >
-              Extract Data
-            </button>
-          </div>
-        </section>
+          </section>
+        )}
       </main>
     </div>
   );

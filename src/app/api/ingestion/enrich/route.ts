@@ -2,14 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 const backendBaseUrl = process.env.SPRINGBOOT_BASE_URL;
 
-const safeStringify = (input: unknown) => {
-  try {
-    return JSON.stringify(input);
-  } catch {
-    return null;
-  }
-};
-
 const safeParse = (payload: string) => {
   try {
     return JSON.parse(payload);
@@ -36,42 +28,40 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const payload =
+  const id =
     typeof incoming === "object" && incoming !== null
-      ? (incoming as Record<string, unknown>).payload
+      ? ((incoming as Record<string, unknown>).id as string | undefined)
       : undefined;
 
-  if (payload === undefined) {
+  if (!id) {
     return NextResponse.json(
-      { error: "Missing `payload` attribute." },
-      { status: 400 },
-    );
-  }
-
-  const serialized = safeStringify(payload);
-  if (serialized === null) {
-    return NextResponse.json(
-      { error: "Payload could not be serialized." },
+      { error: "Missing `id` in request body." },
       { status: 400 },
     );
   }
 
   try {
-    const upstream = await fetch(`${backendBaseUrl}/api/cleanse-only`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const upstream = await fetch(
+      `${backendBaseUrl}/api/start-enrichment/${encodeURIComponent(id)}`,
+      {
+        method: "POST",
       },
-      body: serialized,
-    });
+    );
 
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);
+    const statusValue =
+      typeof body === "object" && body !== null && typeof (body as Record<string, unknown>).status === "string"
+        ? ((body as Record<string, unknown>).status as string)
+        : typeof rawBody === "string"
+          ? rawBody
+          : null;
 
     return NextResponse.json(
       {
         upstreamStatus: upstream.status,
         upstreamOk: upstream.ok,
+        status: statusValue,
         body,
         rawBody,
       },

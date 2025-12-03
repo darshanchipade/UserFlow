@@ -43,7 +43,7 @@ type TreeNode = {
   children?: TreeNode[];
 };
 
-type Stage = "ingestion" | "extraction" | "cleansing";
+type Stage = "ingestion" | "extraction" | "cleansing" | "enrichment";
 
 type FileMetadata = {
   name: string;
@@ -78,6 +78,7 @@ const stageIndexByStage: Record<Stage, number> = {
   ingestion: 0,
   extraction: 1,
   cleansing: 2,
+  enrichment: 3,
 };
 
 const getStepStatus = (label: (typeof stageOrder)[number], stage: Stage) => {
@@ -410,6 +411,12 @@ export default function Home() {
   const [uploadedJsonPayload, setUploadedJsonPayload] = useState<unknown>(null);
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
   const [cleansingJob, setCleansingJob] = useState<CleansingJob | null>(null);
+  const [enrichmentFeedback, setEnrichmentFeedback] = useState<ApiFeedback>({
+    state: "idle",
+  });
+  const [enrichmentStatus, setEnrichmentStatus] = useState<string | null>(null);
+  const [enrichmentMessage, setEnrichmentMessage] = useState<string | null>(null);
+  const [enrichmentJobChecking, setEnrichmentJobChecking] = useState(false);
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
@@ -439,21 +446,20 @@ export default function Home() {
 
   const rootNodeId = treeNodes[0]?.id ?? null;
   const canExtract = allLeafNodes.length > 0;
-  const isExtractionView = currentStage === "extraction";
   const isCleansingView = currentStage === "cleansing";
   const extractionStatusPill =
-    currentStage === "cleansing"
+    currentStage === "extraction"
       ? {
-          label: "Cleansing ready",
-          className: "bg-emerald-50 text-emerald-700",
-          iconClassName: "text-emerald-500",
-          Icon: CheckCircleIcon,
-        }
-      : {
           label: "Extraction in progress",
           className: "bg-amber-50 text-amber-700",
           iconClassName: "animate-spin",
           Icon: ArrowPathIcon,
+        }
+      : {
+          label: "Review ready",
+          className: "bg-emerald-50 text-emerald-700",
+          iconClassName: "text-emerald-500",
+          Icon: CheckCircleIcon,
         };
   const ExtractionStatusIcon = extractionStatusPill.Icon;
 
@@ -469,6 +475,13 @@ export default function Home() {
 
   const handleFileSelection = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    setCleansingFeedback({ state: "idle" });
+    setCleansingJob(null);
+    setEnrichmentFeedback({ state: "idle" });
+    setEnrichmentStatus(null);
+    setEnrichmentMessage(null);
+    setEnrichmentJobChecking(false);
+    setCurrentStage("ingestion");
 
     Array.from(files).forEach(async (file) => {
       const uploadId = crypto.randomUUID();
@@ -583,6 +596,10 @@ export default function Home() {
     setCurrentStage("ingestion");
     setCleansingFeedback({ state: "idle" });
     setCleansingJob(null);
+    setEnrichmentFeedback({ state: "idle" });
+    setEnrichmentStatus(null);
+    setEnrichmentMessage(null);
+    setEnrichmentJobChecking(false);
   };
 
   const sendToCleansing = async () => {
@@ -595,6 +612,11 @@ export default function Home() {
     }
 
     setCleansingFeedback({ state: "loading" });
+    setCleansingJob(null);
+    setEnrichmentFeedback({ state: "idle" });
+    setEnrichmentStatus(null);
+    setEnrichmentMessage(null);
+    setEnrichmentJobChecking(false);
     try {
       const response = await fetch("/api/ingestion/payload", {
         method: "POST",
@@ -608,6 +630,22 @@ export default function Home() {
         typeof payload.body === "object" && payload.body !== null
           ? (payload.body as Record<string, unknown>)
           : null;
+      const cleansedIdValue =
+        body && typeof body["cleansedDataStoreId"] === "string"
+          ? (body["cleansedDataStoreId"] as string)
+          : undefined;
+      const cleansedStatusValue =
+        body && typeof body["status"] === "string"
+          ? (body["status"] as string)
+          : undefined;
+      const descriptiveMessage =
+        typeof payload.rawBody === "string"
+          ? (payload.rawBody as string)
+          : typeof payload.body === "string"
+            ? (payload.body as string)
+            : body && typeof body["message"] === "string"
+              ? (body["message"] as string)
+              : undefined;
       setCleansingFeedback({
         state: response.ok ? "success" : "error",
         message: response.ok
@@ -616,14 +654,10 @@ export default function Home() {
       });
       if (response.ok) {
         setCleansingJob({
-          id: (body?.cleansedDataStoreId as string | undefined) ?? undefined,
-          status: (body?.status as string | undefined) ?? "CLEANSED_PENDING_ENRICHMENT",
-          message:
-            typeof payload.rawBody === "string"
-              ? payload.rawBody
-              : typeof payload.body === "string"
-                ? (payload.body as string)
-                : undefined,
+          id: cleansedIdValue,
+          status: cleansedStatusValue ?? "CLEANSED_PENDING_ENRICHMENT",
+          message: descriptiveMessage,
+          lastChecked: new Date().toLocaleString(),
         });
         setCurrentStage("cleansing");
       }
@@ -680,6 +714,106 @@ export default function Home() {
     }
   };
 
+  const sendToEnrichment = async () => {
+    if (!cleansingJob?.id) {
+      setEnrichmentFeedback({
+        state: "error",
+        message: "Cleansing must finish before starting enrichment.",
+      });
+      return;
+    }
+    setEnrichmentFeedback({ state: "loading" });
+    try {
+      const response = await fetch("/api/ingestion/enrich", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: cleansingJob.id }),
+      });
+      const payload = await response.json();
+      setEnrichmentFeedback({
+        state: response.ok ? "success" : "error",
+        message: response.ok
+          ? "Enrichment started."
+          : (payload?.error as string) ?? "Backend rejected the request.",
+      });
+      if (response.ok) {
+        const statusValue =
+          typeof payload.body === "object" && payload.body !== null
+            ? ((payload.body as Record<string, unknown>).status as string | undefined)
+            : typeof payload.body === "string"
+              ? (payload.body as string)
+              : undefined;
+        setEnrichmentStatus(statusValue ?? "ENRICHMENT_IN_PROGRESS");
+        setEnrichmentMessage(
+          typeof payload.rawBody === "string"
+            ? payload.rawBody
+            : typeof payload.body === "string"
+              ? (payload.body as string)
+              : undefined,
+        );
+        setEnrichmentJobChecking(false);
+        setCleansingJob((previous) =>
+          previous
+            ? {
+                ...previous,
+                status: statusValue ?? "ENRICHMENT_IN_PROGRESS",
+                lastChecked: new Date().toLocaleString(),
+              }
+            : previous,
+        );
+        setCurrentStage("enrichment");
+      }
+    } catch (error) {
+      setEnrichmentFeedback({
+        state: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to reach Spring Boot API.",
+      });
+    }
+  };
+
+  const refreshEnrichmentStatus = async () => {
+    if (!cleansingJob?.id) return;
+    setEnrichmentJobChecking(true);
+    try {
+      const response = await fetch(
+        `/api/ingestion/status?id=${encodeURIComponent(cleansingJob.id)}`,
+      );
+      const payload = await response.json();
+      const statusValue =
+        typeof payload.status === "string"
+          ? payload.status
+          : typeof payload.body === "string"
+            ? payload.body
+            : undefined;
+      setEnrichmentStatus(statusValue ?? enrichmentStatus);
+      setEnrichmentMessage(
+        typeof payload.rawBody === "string"
+          ? payload.rawBody
+          : typeof payload.body === "string"
+            ? (payload.body as string)
+            : enrichmentMessage,
+      );
+      setEnrichmentJobChecking(false);
+      setCleansingJob((previous) =>
+        previous
+          ? {
+              ...previous,
+              status: statusValue ?? previous.status,
+              lastChecked: new Date().toLocaleString(),
+            }
+          : previous,
+      );
+    } catch (error) {
+      setEnrichmentJobChecking(false);
+      setEnrichmentMessage(
+        error instanceof Error ? error.message : "Unable to refresh enrichment status.",
+      );
+    }
+  };
+
   const toggleNode = (nodeId: string) => {
     setExpandedNodes((previous) => {
       const next = new Set(previous);
@@ -704,6 +838,13 @@ export default function Home() {
       });
       return;
     }
+
+    setCleansingFeedback({ state: "idle" });
+    setCleansingJob(null);
+    setEnrichmentFeedback({ state: "idle" });
+    setEnrichmentStatus(null);
+    setEnrichmentMessage(null);
+    setEnrichmentJobChecking(false);
 
     const counter = { value: 0 };
     const children = buildTreeFromJson(parsed, [], counter);
@@ -777,7 +918,7 @@ export default function Home() {
       setApiFeedback({
         state: response.ok ? "success" : "error",
         message: response.ok
-          ? "Payload accepted. Enrichment pipeline triggered."
+          ? "Payload accepted. Cleansing pipeline triggered."
           : "Backend rejected the payload.",
       });
       if (response.ok) {
@@ -1097,9 +1238,9 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
       <main
         className={clsx(
           "mx-auto max-w-6xl px-6 py-8",
-          isExtractionView
-            ? "space-y-6"
-            : "grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]",
+          currentStage === "ingestion"
+            ? "grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]"
+            : "space-y-6",
         )}
       >
         {currentStage === "ingestion" ? (
@@ -1188,7 +1329,7 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
                   >
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                       <ServerStackIcon className="size-5 text-indigo-500" />
-                      POST /api/ingest-json-payload
+                      POST /api/cleanse-only
                     </div>
                     <textarea
                       value={apiPayload}
@@ -1542,15 +1683,34 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setCurrentStage("ingestion");
-                      setCleansingJob(null);
-                      setCleansingFeedback({ state: "idle" });
-                    }}
-                    className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white transition hover:bg-black"
+                    onClick={sendToEnrichment}
+                    disabled={
+                      !cleansingJob?.id ||
+                      cleansingJob?.status?.toUpperCase() !== "CLEANSED_PENDING_ENRICHMENT" ||
+                      enrichmentFeedback.state === "loading"
+                    }
+                    className={clsx(
+                      "inline-flex items-center justify-center rounded-full px-5 py-2 text-sm font-semibold text-white shadow-sm transition",
+                      cleansingJob?.id && cleansingJob.status === "CLEANSED_PENDING_ENRICHMENT"
+                        ? "bg-indigo-600 hover:bg-indigo-700"
+                        : "cursor-not-allowed bg-slate-400",
+                    )}
                   >
-                    Back to uploads
+                    {enrichmentFeedback.state === "loading"
+                      ? "Starting…"
+                      : "Send to Enrichment"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleBackToSelection}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+                  >
+                    Back to Selection
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-col gap-2">
+                  <FeedbackPill feedback={cleansingFeedback} />
+                  <FeedbackPill feedback={enrichmentFeedback} />
                 </div>
               </div>
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1608,6 +1768,145 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
                       {extractionRows.map((row) => (
                         <div
                           key={row.path}
+                          className="grid grid-cols-[220px_minmax(0,1fr)]"
+                        >
+                          <div className="bg-slate-50/40 px-4 py-3">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {row.field}
+                            </p>
+                            <p className="text-xs text-slate-500">{row.path}</p>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p className="text-sm text-slate-700">{row.originalValue}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <FileMetadataCard metadata={fileMetadata} />
+          </section>
+        ) : currentStage === "enrichment" ? (
+          <section className="space-y-6">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Enrichment
+                  </p>
+                  <h2 className="mt-1 text-2xl font-semibold text-slate-900">
+                    Content enrichment underway
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    We’re generating structured content from the cleansed payload. Refresh
+                    the status to see when the job completes.
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                  <ArrowPathIcon className="size-3.5 animate-spin" />
+                  {enrichmentStatus ?? "Processing"}
+                </span>
+              </div>
+              <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Cleansed ID
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {cleansingJob?.id ?? "—"}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Stage status
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {enrichmentStatus ?? "ENRICHMENT_IN_PROGRESS"}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Last checked
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {cleansingJob?.lastChecked ?? "—"}
+                  </p>
+                </div>
+              </div>
+              {enrichmentMessage && (
+                <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+                  {enrichmentMessage}
+                </div>
+              )}
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={refreshEnrichmentStatus}
+                  disabled={!cleansingJob?.id || enrichmentJobChecking}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-700 transition",
+                    !cleansingJob?.id
+                      ? "cursor-not-allowed opacity-60"
+                      : "hover:border-indigo-200 hover:text-indigo-600",
+                  )}
+                >
+                  {enrichmentJobChecking ? (
+                    <>
+                      <ArrowPathIcon className="size-4 animate-spin" />
+                      Checking status…
+                    </>
+                  ) : (
+                    <>
+                      <MagnifyingGlassIcon className="size-4" />
+                      Refresh status
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBackToSelection}
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white transition hover:bg-black"
+                >
+                  Back to Selection
+                </button>
+              </div>
+              <div className="mt-2">
+                <FeedbackPill feedback={enrichmentFeedback} />
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Enriched data
+                  </p>
+                  <h3 className="mt-1 text-xl font-semibold text-slate-900">
+                    Cleansed content snapshot
+                  </h3>
+                </div>
+                <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                  Review
+                </span>
+              </div>
+              <div className="mt-6 rounded-2xl border border-slate-100">
+                <div className="grid grid-cols-[220px_minmax(0,1fr)] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="px-4 py-3">Field</div>
+                  <div className="px-4 py-3">Cleansed Value</div>
+                </div>
+                <div className="max-h-[420px] overflow-y-auto">
+                  {extractionRows.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-slate-500">
+                      Cleansed values will appear here once available.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {extractionRows.map((row) => (
+                        <div
+                          key={`${row.path}-enriched`}
                           className="grid grid-cols-[220px_minmax(0,1fr)]"
                         >
                           <div className="bg-slate-50/40 px-4 py-3">

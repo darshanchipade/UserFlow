@@ -482,6 +482,7 @@ export default function Home() {
           iconClassName: "animate-spin",
           Icon: ArrowPathIcon,
         };
+  const ExtractionStatusIcon = extractionStatusPill.Icon;
 
   const filteredUploads = useMemo(() => {
     if (!historySearch) return uploads;
@@ -1426,7 +1427,7 @@ export default function Home() {
                       extractionStatusPill.className,
                     )}
                   >
-                    <extractionStatusPill.Icon
+                    <ExtractionStatusIcon
                       className={clsx("size-3.5", extractionStatusPill.iconClassName)}
                     />
                     {extractionStatusPill.label}

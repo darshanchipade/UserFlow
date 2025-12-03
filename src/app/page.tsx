@@ -344,7 +344,6 @@ export default function Home() {
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
-  const [extractedJsonPreview, setExtractedJsonPreview] = useState("");
   const [extractedFileName, setExtractedFileName] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [historySearch, setHistorySearch] = useState("");
@@ -429,11 +428,11 @@ export default function Home() {
         };
 
         setTreeNodes([rootNode]);
-        setExpandedNodes(new Set([rootNode.id]));
-        const defaultSelection = new Set(gatherNodeIds(rootNode));
+        const allNodeIds = new Set(gatherNodeIds(rootNode));
+        setExpandedNodes(allNodeIds);
+        const defaultSelection = new Set(allNodeIds);
         setSelectedNodes(defaultSelection);
         setExtractedFileName(file.name);
-        setExtractedJsonPreview(JSON.stringify(parsed, null, 2));
 
         setUploads((previous) =>
           previous.map((item) =>
@@ -1185,23 +1184,6 @@ export default function Home() {
               {extractedFileName ?? "Waiting for JSON upload"}
             </span>
           </div>
-
-          {extractedJsonPreview && (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-900/95 p-4 shadow-inner">
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
-                <span className="inline-flex items-center gap-2">
-                  <DocumentTextIcon className="size-4 text-slate-300" />
-                  Extracted JSON Preview
-                </span>
-                <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
-                  Read-only
-                </span>
-              </div>
-              <pre className="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl bg-black/40 p-3 text-[11px] leading-relaxed text-slate-100">
-                {extractedJsonPreview}
-              </pre>
-            </div>
-          )}
 
           <div className="mt-4">
             <div className="relative">

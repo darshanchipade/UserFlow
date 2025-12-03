@@ -14,7 +14,7 @@ import {
   ServerStackIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 
 type UploadTab = "s3" | "local" | "api";
 
@@ -44,6 +44,14 @@ type TreeNode = {
 };
 
 type Stage = "ingestion" | "extraction" | "cleansing";
+
+type FileMetadata = {
+  name: string;
+  sizeLabel: string;
+  source: string;
+  uploadedAt: string;
+  type: string;
+};
 
 type ApiFeedback = {
   state: "idle" | "loading" | "success" | "error";
@@ -107,6 +115,37 @@ const formatBytes = (bytes: number) => {
   const value = bytes / Math.pow(1024, index);
   return `${value.toFixed(value > 9 || index === 0 ? 0 : 1)} ${units[index]}`;
 };
+
+const describeFileKind = (name: string, mime?: string) => {
+  if (mime && mime !== "application/octet-stream") {
+    if (mime === "application/json") return "JSON";
+    if (mime.includes("pdf")) return "PDF";
+  }
+  const extension = name.split(".").pop()?.toUpperCase();
+  return extension ?? "FILE";
+};
+
+const toByteLength = (value: string) => new TextEncoder().encode(value).length;
+
+const buildMetadataFromFile = (file: File): FileMetadata => ({
+  name: file.name,
+  sizeLabel: formatBytes(file.size),
+  source: "Local Upload",
+  uploadedAt: new Date().toLocaleString(),
+  type: describeFileKind(file.name, file.type),
+});
+
+const buildMetadataFromPayload = (
+  name: string,
+  byteLength: number,
+  source: string,
+): FileMetadata => ({
+  name,
+  sizeLabel: formatBytes(byteLength),
+  source,
+  uploadedAt: new Date().toLocaleString(),
+  type: "JSON",
+});
 
 const safeJsonParse = (value: string) => {
   try {
@@ -179,47 +218,11 @@ const buildTreeFromJson = (
   return [];
 };
 
-const gatherNodeIds = (node: TreeNode): string[] => {
-  return [
-    node.id,
-    ...(node.children?.flatMap((child) => gatherNodeIds(child)) ?? []),
-  ];
-};
-
 const gatherLeafNodes = (node: TreeNode): TreeNode[] => {
   if (!node.children || node.children.length === 0) {
     return [node];
   }
   return node.children.flatMap((child) => gatherLeafNodes(child));
-};
-
-const isNodeFullySelected = (
-  node: TreeNode,
-  selected: Set<string>,
-): boolean => {
-  if (!node.children || node.children.length === 0) {
-    return selected.has(node.id);
-  }
-  return (
-    selected.has(node.id) ||
-    node.children.every((child) => isNodeFullySelected(child, selected))
-  );
-};
-
-const isNodePartiallySelected = (
-  node: TreeNode,
-  selected: Set<string>,
-): boolean => {
-  if (!node.children || node.children.length === 0) {
-    return false;
-  }
-  const childStates = node.children.map((child) => ({
-    full: isNodeFullySelected(child, selected),
-    partial: isNodePartiallySelected(child, selected),
-  }));
-  const hasPartialChild = childStates.some((child) => child.partial);
-  const hasCheckedChild = childStates.some((child) => child.full);
-  return (!selected.has(node.id) && hasCheckedChild) || hasPartialChild;
 };
 
 const filterTree = (nodes: TreeNode[], query: string): TreeNode[] => {
@@ -344,33 +347,6 @@ const FeedbackPill = ({ feedback }: { feedback: ApiFeedback }) => {
   );
 };
 
-const TreeCheckbox = ({
-  checked,
-  indeterminate,
-  onChange,
-}: {
-  checked: boolean;
-  indeterminate: boolean;
-  onChange: (next: boolean) => void;
-}) => {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (ref.current) {
-      ref.current.indeterminate = indeterminate;
-    }
-  }, [indeterminate]);
-
-  return (
-    <input
-      ref={ref}
-      type="checkbox"
-      className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
-      checked={checked}
-      onChange={(event) => onChange(event.target.checked)}
-    />
-  );
-};
-
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentStage, setCurrentStage] = useState<Stage>("ingestion");
@@ -378,7 +354,6 @@ export default function Home() {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-  const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [historySearch, setHistorySearch] = useState("");
   const [apiPayload, setApiPayload] = useState("");
@@ -394,18 +369,12 @@ export default function Home() {
   });
   const [activeFileName, setActiveFileName] = useState<string>("Content.JSON");
   const [uploadedJsonPayload, setUploadedJsonPayload] = useState<unknown>(null);
+  const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
     [treeNodes, searchQuery],
   );
-
-  const selectedLeafNodes = useMemo(() => {
-    if (!treeNodes.length) return [];
-    return treeNodes.flatMap((node) =>
-      gatherLeafNodes(node).filter((leaf) => selectedNodes.has(leaf.id)),
-    );
-  }, [treeNodes, selectedNodes]);
 
   const allLeafNodes = useMemo(() => {
     if (!treeNodes.length) return [];
@@ -414,16 +383,15 @@ export default function Home() {
 
   const extractionRows = useMemo(() => {
     if (!treeNodes.length) return [];
-    const sourceRows =
-      selectedLeafNodes.length > 0 ? selectedLeafNodes : allLeafNodes.slice(0, 12);
+    const sourceRows = allLeafNodes.slice(0, 12);
     return sourceRows.map((leaf) => ({
       field: leaf.label,
       originalValue: formatNodeValue(leaf.value),
       path: leaf.path,
     }));
-  }, [selectedLeafNodes, allLeafNodes, treeNodes]);
+  }, [allLeafNodes, treeNodes]);
 
-  const canExtract = extractionRows.length > 0;
+  const canExtract = allLeafNodes.length > 0;
   const isExtractionView = currentStage !== "ingestion";
   const extractionStatusPill =
     currentStage === "cleansing"
@@ -482,9 +450,9 @@ export default function Home() {
           };
           setTreeNodes([rootNode]);
           setExpandedNodes(new Set([rootNode.id]));
-          setSelectedNodes(new Set());
           setUploadedJsonPayload(parsed);
           setActiveFileName(file.name);
+          setFileMetadata(buildMetadataFromFile(file));
           setCurrentStage("ingestion");
         }
       }
@@ -616,20 +584,6 @@ export default function Home() {
     });
   };
 
-  const handleNodeSelection = (node: TreeNode, value: boolean) => {
-    setSelectedNodes((previous) => {
-      const next = new Set(previous);
-      gatherNodeIds(node).forEach((id) => {
-        if (value) {
-          next.add(id);
-        } else {
-          next.delete(id);
-        }
-      });
-      return next;
-    });
-  };
-
   const submitApiPayload = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!apiPayload.trim()) return;
@@ -654,9 +608,12 @@ export default function Home() {
     };
     setTreeNodes([rootNode]);
     setExpandedNodes(new Set([rootNode.id]));
-    setSelectedNodes(new Set());
     setUploadedJsonPayload(parsed);
     setActiveFileName("API Payload");
+    const payloadString = JSON.stringify(parsed);
+    setFileMetadata(
+      buildMetadataFromPayload("API Payload", toByteLength(payloadString), "API Endpoint"),
+    );
     setCurrentStage("ingestion");
 
     setApiFeedback({ state: "loading" });
@@ -875,10 +832,14 @@ export default function Home() {
     nodes.map((node) => {
       const hasChildren = Boolean(node.children?.length);
       const expanded = expandedNodes.has(node.id);
-      const fullySelected = isNodeFullySelected(node, selectedNodes);
-      const partiallySelected = isNodePartiallySelected(node, selectedNodes);
       const matchesSearch =
         searchQuery && node.label.toLowerCase().includes(searchQuery.toLowerCase());
+      const badge =
+        node.type === "object"
+          ? { label: "OBJ", className: "bg-slate-100 text-slate-600" }
+          : node.type === "array"
+            ? { label: "ARR", className: "bg-indigo-100 text-indigo-600" }
+            : { label: "VAL", className: "bg-emerald-100 text-emerald-700" };
 
       return (
         <div key={node.id} className="space-y-2">
@@ -904,18 +865,17 @@ export default function Home() {
             ) : (
               <span className="size-4" />
             )}
-            <TreeCheckbox
-              checked={fullySelected}
-              indeterminate={partiallySelected}
-              onChange={(next) => handleNodeSelection(node, next)}
-            />
-            <div className="flex flex-col">
-              <span className="text-sm font-medium text-slate-900">
-                {node.label}
-              </span>
-              {!hasChildren && (
-                <span className="text-xs text-slate-500">{node.path}</span>
+            <span
+              className={clsx(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                badge.className,
               )}
+            >
+              {badge.label}
+            </span>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-slate-900">{node.label}</span>
+              <span className="text-xs text-slate-500">{node.path}</span>
             </div>
           </div>
           {hasChildren && expanded && (
@@ -926,6 +886,34 @@ export default function Home() {
         </div>
       );
     });
+
+const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
+  if (!metadata) return null;
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-600">
+      <p className="text-xs uppercase tracking-wide text-slate-400">File metadata</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-xs text-slate-400">Name</p>
+          <p className="font-semibold text-slate-900">{metadata.name}</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-400">Size</p>
+          <p className="font-semibold text-slate-900">{metadata.sizeLabel}</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-400">Source</p>
+          <p className="font-semibold text-slate-900">{metadata.source}</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-400">Type</p>
+          <p className="font-semibold text-slate-900">{metadata.type}</p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-slate-500">Uploaded {metadata.uploadedAt}</p>
+    </div>
+  );
+};
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -1281,14 +1269,14 @@ export default function Home() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-400">
-                    Selection
+                    Field Inventory
                   </p>
                   <h3 className="text-lg font-semibold text-slate-900">
-                    Select Items
+                    JSON Structure
                   </h3>
                 </div>
                 <span className="text-sm font-semibold text-slate-600">
-                  {selectedLeafNodes.length} items
+                  {allLeafNodes.length} fields
                 </span>
               </div>
               <div className="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
@@ -1322,8 +1310,8 @@ export default function Home() {
 
               <div className="mt-6 rounded-2xl bg-slate-50 p-4">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                  <span className="font-semibold text-slate-800">Selected:</span>
-                  {selectedLeafNodes.slice(0, 6).map((leaf) => (
+                  <span className="font-semibold text-slate-800">Preview:</span>
+                  {allLeafNodes.slice(0, 6).map((leaf) => (
                     <span
                       key={leaf.id}
                       className="rounded-full bg-white px-3 py-1 font-semibold shadow-sm"
@@ -1331,14 +1319,14 @@ export default function Home() {
                       {leaf.label}
                     </span>
                   ))}
-                  {selectedLeafNodes.length > 6 && (
+                  {allLeafNodes.length > 6 && (
                     <span className="rounded-full bg-white px-3 py-1 font-semibold shadow-sm">
-                      +{selectedLeafNodes.length - 6} more
+                      +{allLeafNodes.length - 6} more
                     </span>
                   )}
-                  {selectedLeafNodes.length === 0 && (
+                  {allLeafNodes.length === 0 && (
                     <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-500 shadow-sm">
-                      All fields will be extracted
+                      Upload a JSON to view fields
                     </span>
                   )}
                 </div>
@@ -1494,6 +1482,9 @@ export default function Home() {
                   metadata. Use the right pane to confirm the cleansed values before
                   sending downstream.
                 </div>
+                <div className="mt-4">
+                  <FileMetadataCard metadata={fileMetadata} />
+                </div>
               </div>
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex items-center justify-between">
@@ -1539,35 +1530,42 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
-                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-100">
+                <div className="mt-6 rounded-2xl border border-slate-100">
                   <div className="grid grid-cols-[220px_minmax(0,1fr)] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <div className="px-4 py-3">Field</div>
                     <div className="px-4 py-3">Original Value</div>
                   </div>
-                  {extractionRows.length === 0 ? (
-                    <div className="p-6 text-center text-sm text-slate-500">
-                      Select one or more fields on the left to preview their values.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {extractionRows.map((row) => (
-                        <div
-                          key={row.path}
-                          className="grid grid-cols-[220px_minmax(0,1fr)]"
-                        >
-                          <div className="bg-slate-50/40 px-4 py-3">
-                            <p className="text-sm font-semibold text-slate-900">
-                              {row.field}
-                            </p>
-                            <p className="text-xs text-slate-500">{row.path}</p>
+                  <div className="max-h-[420px] overflow-y-auto">
+                    {extractionRows.length === 0 ? (
+                      <div className="p-6 text-center text-sm text-slate-500">
+                        Select one or more fields on the left to preview their values.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {extractionRows.map((row) => (
+                          <div
+                            key={row.path}
+                            className="grid grid-cols-[220px_minmax(0,1fr)]"
+                          >
+                            <div className="bg-slate-50/40 px-4 py-3">
+                              <p className="text-sm font-semibold text-slate-900">
+                                {row.field}
+                              </p>
+                              <p className="text-xs text-slate-500">{row.path}</p>
+                            </div>
+                            <div className="px-4 py-3">
+                              <p className="text-sm text-slate-700">
+                                {row.originalValue}
+                              </p>
+                            </div>
                           </div>
-                          <div className="px-4 py-3">
-                            <p className="text-sm text-slate-700">{row.originalValue}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <FileMetadataCard metadata={fileMetadata} />
                 </div>
               </div>
             </div>

@@ -344,6 +344,8 @@ export default function Home() {
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
+  const [extractedJsonPreview, setExtractedJsonPreview] = useState("");
+  const [extractedFileName, setExtractedFileName] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [historySearch, setHistorySearch] = useState("");
   const [apiPayload, setApiPayload] = useState("");
@@ -396,20 +398,56 @@ export default function Home() {
       if (file.name.toLowerCase().endsWith(".json")) {
         const text = await file.text();
         const parsed = safeJsonParse(text);
-        if (parsed) {
-          const counter = { value: 0 };
-          const children = buildTreeFromJson(parsed, [], counter);
-          const rootNode: TreeNode = {
-            id: file.name,
-            label: file.name,
-            path: file.name,
-            type: "object",
-            children,
-          };
-          setTreeNodes([rootNode]);
-          setExpandedNodes(new Set([rootNode.id]));
-          setSelectedNodes(new Set());
+        if (!parsed) {
+          setUploads((previous) =>
+            previous.map((item) =>
+              item.id === uploadId
+                ? {
+                    ...item,
+                    status: "error",
+                    backendMessage:
+                      "Unable to parse JSON. Please upload a valid JSON file.",
+                  }
+                : item,
+            ),
+          );
+          return;
         }
+
+        const counter = { value: 0 };
+        const children = buildTreeFromJson(parsed, [], counter);
+        const rootNode: TreeNode = {
+          id: file.name,
+          label: file.name,
+          path: file.name,
+          type: Array.isArray(parsed)
+            ? "array"
+            : isPlainObject(parsed)
+              ? "object"
+              : "value",
+          children: children.length ? children : undefined,
+        };
+
+        setTreeNodes([rootNode]);
+        setExpandedNodes(new Set([rootNode.id]));
+        const defaultSelection = new Set(gatherNodeIds(rootNode));
+        setSelectedNodes(defaultSelection);
+        setExtractedFileName(file.name);
+        setExtractedJsonPreview(JSON.stringify(parsed, null, 2));
+
+        setUploads((previous) =>
+          previous.map((item) =>
+            item.id === uploadId
+              ? {
+                  ...item,
+                  status: "success",
+                  backendStatus: "EXTRACTED",
+                  backendMessage: "JSON parsed locally. Ready for cleansing.",
+                }
+              : item,
+          ),
+        );
+        return;
       }
 
       const formData = new FormData();
@@ -1144,9 +1182,26 @@ export default function Home() {
           <div className="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
             <InboxStackIcon className="size-4 text-slate-500" />
             <span className="text-xs font-semibold text-slate-600">
-              Content.JSON
+              {extractedFileName ?? "Waiting for JSON upload"}
             </span>
           </div>
+
+          {extractedJsonPreview && (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-900/95 p-4 shadow-inner">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
+                <span className="inline-flex items-center gap-2">
+                  <DocumentTextIcon className="size-4 text-slate-300" />
+                  Extracted JSON Preview
+                </span>
+                <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
+                  Read-only
+                </span>
+              </div>
+              <pre className="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl bg-black/40 p-3 text-[11px] leading-relaxed text-slate-100">
+                {extractedJsonPreview}
+              </pre>
+            </div>
+          )}
 
           <div className="mt-4">
             <div className="relative">

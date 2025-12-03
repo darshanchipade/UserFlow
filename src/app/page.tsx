@@ -409,6 +409,7 @@ export default function Home() {
     }));
   }, [previewSourceNode]);
 
+  const rootNodeId = treeNodes[0]?.id ?? null;
   const canExtract = allLeafNodes.length > 0;
   const isExtractionView = currentStage !== "ingestion";
   const extractionStatusPill =
@@ -1376,15 +1377,36 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
           </>
         ) : (
           <section className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Active File
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                    {activeFileName}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ArrowUpTrayIcon className="size-4" />
+                  Replace file
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-slate-400">
-                      Extraction
+                      File Structure
                     </p>
                     <h2 className="mt-1 text-xl font-semibold text-slate-900">
-                      File Structure
+                      JSON Fields
                     </h2>
                   </div>
                   <span
@@ -1399,120 +1421,34 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
                     {extractionStatusPill.label}
                   </span>
                 </div>
-                <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-                  <div className="space-y-3">
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-400">
-                            Active File
-                          </p>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {activeFileName}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600"
-                          onClick={() => fileInputRef.current?.click()}
-                        >
-                          <ArrowUpTrayIcon className="size-3.5" />
-                          Replace
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-slate-900">
-                          JSON Fields
-                        </h3>
-                        <span className="text-xs text-slate-500">
-                          {allLeafNodes.length} fields
-                        </span>
-                      </div>
-                      <div className="mt-3">
-                        <div className="relative">
-                          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
-                          <input
-                            type="search"
-                            placeholder="Search fields..."
-                            value={searchQuery}
-                            onChange={(event) => setSearchQuery(event.target.value)}
-                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
-                          />
-                        </div>
-                      </div>
-                      <div className="mt-4 max-h-[460px] overflow-y-auto pr-2">
-                        {filteredTree.length === 0 ? (
-                          <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
-                            Upload a JSON file to view its structure.
-                          </div>
-                        ) : (
-                          <div className="space-y-3">{renderTree(filteredTree)}</div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <div className="flex items-center justify-between text-sm font-semibold text-slate-900">
-                        <span>Version History</span>
-                        <span className="text-xs font-medium text-slate-500">
-                          File name
-                        </span>
-                      </div>
-                      <div className="mt-4 space-y-3">
-                        {["Content.JSON", "Content.PDF", "Content.XLS", "Content.DOCX"].map(
-                          (file, index) => (
-                            <div
-                              key={file}
-                              className="flex items-center justify-between rounded-2xl border border-slate-100 px-3 py-2"
-                            >
-                              <div className="flex items-center gap-3">
-                                <span
-                                  className={clsx(
-                                    "rounded-xl px-3 py-1 text-xs font-semibold",
-                                    index === 0
-                                      ? "bg-violet-100 text-violet-700"
-                                      : index === 1
-                                        ? "bg-rose-100 text-rose-700"
-                                        : index === 2
-                                          ? "bg-emerald-100 text-emerald-700"
-                                          : "bg-sky-100 text-sky-700",
-                                  )}
-                                >
-                                  {file.split(".").pop()}
-                                </span>
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-900">
-                                    {file}
-                                  </p>
-                                  <p className="text-xs text-slate-500">
-                                    Modified 2025-11-17
-                                  </p>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600"
-                              >
-                                View
-                              </button>
-                            </div>
-                          ),
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                  Extraction identifies structured fields and their corresponding
-                  metadata. Use the right pane to confirm the cleansed values before
-                  sending downstream.
-                </div>
                 <div className="mt-4">
-                  <FileMetadataCard metadata={fileMetadata} />
+                  <div className="relative">
+                    <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
+                    <input
+                      type="search"
+                      placeholder="Search fields..."
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
+                    />
+                  </div>
                 </div>
+                <div className="mt-4 h-[520px] overflow-y-auto pr-2">
+                  {filteredTree.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
+                      Upload a JSON file to view its structure.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">{renderTree(filteredTree)}</div>
+                  )}
+                </div>
+                <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-xs text-slate-500">
+                  Click any field to preview its raw value on the right. Selecting a
+                  parent node previews the entire branch.
+                </div>
+                {/* <div className="mt-4 rounded-2xl border border-slate-200 p-4">
+                  Version history (temporarily disabled)
+                </div> */}
               </div>
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex items-center justify-between">
@@ -1527,6 +1463,24 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
                   <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
                     Structured
                   </span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                  <span>
+                    Showing{" "}
+                    {previewSourceNode?.id === rootNodeId ? "entire JSON" : "selection"}:
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
+                    {previewSourceNode?.path ?? "—"}
+                  </span>
+                  {rootNodeId && previewSourceNode?.id !== rootNodeId && (
+                    <button
+                      type="button"
+                      className="rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
+                      onClick={() => setActiveNodePath(rootNodeId)}
+                    >
+                      Show entire JSON
+                    </button>
+                  )}
                 </div>
                 <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex flex-col gap-2 text-sm">
@@ -1566,7 +1520,7 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
                   <div className="max-h-[420px] overflow-y-auto">
                     {extractionRows.length === 0 ? (
                       <div className="p-6 text-center text-sm text-slate-500">
-                        Select one or more fields on the left to preview their values.
+                        Upload a JSON file and choose a field to preview its value.
                       </div>
                     ) : (
                       <div className="divide-y divide-slate-100">
@@ -1592,11 +1546,10 @@ const FileMetadataCard = ({ metadata }: { metadata: FileMetadata | null }) => {
                     )}
                   </div>
                 </div>
-                <div className="mt-4">
-                  <FileMetadataCard metadata={fileMetadata} />
-                </div>
               </div>
             </div>
+
+            <FileMetadataCard metadata={fileMetadata} />
           </section>
         )}
       </main>

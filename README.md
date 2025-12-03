@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This UI is built with [Next.js](https://nextjs.org) and proxies ingestion
+requests to the companion Spring Boot service in
+[`darshanchipade/springboot-SQS-Impl`](https://github.com/darshanchipade/springboot-SQS-Impl).
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies and run the dev server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the experience.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Spring Boot Integration
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The `/api/ingestion/*` routes call directly into the Spring Boot
+`DataExtractionController`. Configure the backend location through
+`.env.local`:
 
-## Learn More
+```bash
+SPRINGBOOT_BASE_URL=http://localhost:8081
+```
 
-To learn more about Next.js, take a look at the following resources:
+Available ingestion modes:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Local upload** – `POST /api/extract-cleanse-enrich-and-store` with a JSON file.
+- **S3/classpath ingestion** – `GET /api/extract-cleanse-enrich-and-store?sourceUri=...`
+  (accepts `s3://` and `classpath:` URIs reachable by the backend).
+- **API payload** – `POST /api/ingest-json-payload` with a JSON payload body.
+- **Status checks** – `GET /api/cleansed-data-status/{id}`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Ensure the Spring Boot app has credentials for any referenced S3 buckets
+before using the S3/classpath tab.
 
-## Deploy on Vercel
+## Notes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `app/page.tsx` renders the entire workflow.
+- `/src/app/api/ingestion/*` contains thin proxy handlers to the Spring Boot service.
+- Heroicons power the UI icons (`@heroicons/react`).

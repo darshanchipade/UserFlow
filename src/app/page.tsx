@@ -25,7 +25,7 @@ type UploadItem = {
   name: string;
   size: number;
   type: string;
-  source: "Local" | "API";
+  source: "Local" | "API" | "S3";
   status: UploadStatus;
   createdAt: number;
   cleansedId?: string;
@@ -59,9 +59,9 @@ const uploadTabs = [
   {
     id: "s3" as const,
     title: "Amazon S3 / Cloud",
-    description: "Connect to an existing S3 bucket.",
+    description: "Ingest directly from s3:// or classpath URIs.",
     icon: CloudArrowUpIcon,
-    disabled: true,
+    disabled: false,
   },
   {
     id: "local" as const,
@@ -271,6 +271,45 @@ const statusStyles: Record<
   },
 };
 
+const FeedbackPill = ({ feedback }: { feedback: ApiFeedback }) => {
+  if (feedback.state === "idle") {
+    return null;
+  }
+
+  const className = clsx(
+    "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
+    feedback.state === "success"
+      ? "bg-emerald-50 text-emerald-700"
+      : feedback.state === "error"
+        ? "bg-rose-50 text-rose-700"
+        : "bg-indigo-50 text-indigo-600",
+  );
+
+  const Icon =
+    feedback.state === "loading"
+      ? ArrowPathIcon
+      : feedback.state === "success"
+        ? CheckCircleIcon
+        : ExclamationCircleIcon;
+
+  const message =
+    feedback.message ??
+    (feedback.state === "loading"
+      ? "Contacting backend..."
+      : feedback.state === "success"
+        ? "Completed successfully."
+        : "Something went wrong.");
+
+  return (
+    <div className={className}>
+      <Icon
+        className={clsx("size-4", feedback.state === "loading" && "animate-spin")}
+      />
+      {message}
+    </div>
+  );
+};
+
 const TreeCheckbox = ({
   checked,
   indeterminate,
@@ -309,6 +348,10 @@ export default function Home() {
   const [historySearch, setHistorySearch] = useState("");
   const [apiPayload, setApiPayload] = useState("");
   const [apiFeedback, setApiFeedback] = useState<ApiFeedback>({
+    state: "idle",
+  });
+  const [s3Uri, setS3Uri] = useState("");
+  const [s3Feedback, setS3Feedback] = useState<ApiFeedback>({
     state: "idle",
   });
 
@@ -547,6 +590,99 @@ export default function Home() {
         ),
       );
       setApiFeedback({
+        state: "error",
+        message: "Failed to reach the Spring Boot API.",
+      });
+    }
+  };
+
+  const submitS3Ingestion = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalized = s3Uri.trim();
+    if (!normalized) {
+      setS3Feedback({
+        state: "error",
+        message: "Provide an s3://bucket/key (or classpath:) URI first.",
+      });
+      return;
+    }
+
+    setS3Feedback({ state: "loading" });
+    const uploadId = crypto.randomUUID();
+    setUploads((previous) => [
+      {
+        id: uploadId,
+        name: normalized,
+        size: 0,
+        type: "text/uri-list",
+        source: "S3",
+        status: "uploading",
+        createdAt: Date.now(),
+      },
+      ...previous,
+    ]);
+
+    try {
+      const response = await fetch("/api/ingestion/s3", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceUri: normalized }),
+      });
+      const payload = await response.json();
+      const body = payload.body as Record<string, unknown> | string | null;
+      const cleansedId =
+        typeof body === "object" && body !== null
+          ? (body["cleansedDataStoreId"] as string | undefined)
+          : undefined;
+      const backendStatus =
+        typeof body === "object" && body !== null
+          ? (body["status"] as string | undefined)
+          : undefined;
+
+      setUploads((previous) =>
+        previous.map((upload) =>
+          upload.id === uploadId
+            ? {
+                ...upload,
+                status: response.ok ? "success" : "error",
+                cleansedId: cleansedId ?? upload.cleansedId,
+                backendStatus:
+                  backendStatus ?? (response.ok ? "ACCEPTED" : upload.backendStatus),
+                backendMessage:
+                  typeof body === "string"
+                    ? body
+                    : typeof payload.rawBody === "string"
+                      ? payload.rawBody
+                      : upload.backendMessage,
+              }
+            : upload,
+        ),
+      );
+
+      setS3Feedback({
+        state: response.ok ? "success" : "error",
+        message: response.ok
+          ? "Source accepted. Enrichment pipeline triggered."
+          : "Backend rejected the S3/classpath request.",
+      });
+
+      if (response.ok) {
+        setS3Uri("");
+      }
+    } catch (error) {
+      setUploads((previous) =>
+        previous.map((upload) =>
+          upload.id === uploadId
+            ? {
+                ...upload,
+                status: "error",
+                backendMessage:
+                  error instanceof Error ? error.message : "S3 ingestion failed",
+              }
+            : upload,
+        ),
+      );
+      setS3Feedback({
         state: "error",
         message: "Failed to reach the Spring Boot API.",
       });
@@ -799,32 +935,42 @@ export default function Home() {
                   className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-900 shadow-inner focus:border-indigo-500 focus:outline-none"
                 />
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                  {apiFeedback.state !== "idle" && (
-                    <div
-                      className={clsx(
-                        "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
-                        apiFeedback.state === "success"
-                          ? "bg-emerald-50 text-emerald-700"
-                          : apiFeedback.state === "error"
-                            ? "bg-rose-50 text-rose-700"
-                            : "bg-indigo-50 text-indigo-600",
-                      )}
-                    >
-                      {apiFeedback.state === "loading" ? (
-                        <ArrowPathIcon className="size-4 animate-spin" />
-                      ) : apiFeedback.state === "success" ? (
-                        <CheckCircleIcon className="size-4" />
-                      ) : (
-                        <ExclamationCircleIcon className="size-4" />
-                      )}
-                      {apiFeedback.message}
-                    </div>
-                  )}
+                  <FeedbackPill feedback={apiFeedback} />
                   <button
                     type="submit"
                     className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
                   >
                     Dispatch Payload
+                  </button>
+                </div>
+              </form>
+            )}
+            {activeTab === "s3" && (
+              <form
+                className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                onSubmit={submitS3Ingestion}
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <CloudArrowUpIcon className="size-5 text-indigo-500" />
+                  GET /api/extract-cleanse-enrich-and-store
+                </div>
+                <input
+                  value={s3Uri}
+                  onChange={(event) => setS3Uri(event.target.value)}
+                  placeholder="s3://my-bucket/path/to/file.json"
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-900 shadow-inner focus:border-indigo-500 focus:outline-none"
+                />
+                <p className="text-xs text-slate-500">
+                  Accepts s3://bucket/key or classpath:relative/path references that
+                  the Spring Boot service can access.
+                </p>
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <FeedbackPill feedback={s3Feedback} />
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                  >
+                    Trigger Ingestion
                   </button>
                 </div>
               </form>

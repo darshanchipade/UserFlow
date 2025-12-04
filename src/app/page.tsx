@@ -49,13 +49,13 @@ type ApiFeedback = {
   message?: string;
 };
 
-const pipelineSteps = [
-  "Ingestion",
-  "Extraction",
-  "Cleansing",
-  "Data Enrichment",
-  "Content QA",
-] as const;
+const steps = [
+  { label: "Ingestion", status: "current" as const },
+  { label: "Extraction", status: "upcoming" as const },
+  { label: "Cleansing", status: "upcoming" as const },
+  { label: "Data Enrichment", status: "upcoming" as const },
+  { label: "Content QA", status: "upcoming" as const },
+];
 
 const uploadTabs = [
   {

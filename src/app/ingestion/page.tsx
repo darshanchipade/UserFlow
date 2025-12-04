@@ -1,0 +1,963 @@
+"use client";
+
+import {
+  ArrowPathIcon,
+  ArrowUpTrayIcon,
+  CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CloudArrowUpIcon,
+  DocumentTextIcon,
+  ExclamationCircleIcon,
+  InboxStackIcon,
+  MagnifyingGlassIcon,
+  ServerStackIcon,
+} from "@heroicons/react/24/outline";
+import clsx from "clsx";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  TreeNode,
+  buildTreeFromJson,
+  filterTree,
+  gatherLeafNodes,
+} from "@/lib/tree";
+import { saveExtractionContext } from "@/lib/extraction-context";
+
+type UploadTab = "local" | "api" | "s3";
+
+type UploadStatus = "uploading" | "success" | "error";
+
+type UploadItem = {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  source: "Local" | "API" | "S3";
+  status: UploadStatus;
+  createdAt: number;
+  cleansedId?: string;
+  backendStatus?: string;
+  backendMessage?: string;
+};
+
+type ApiFeedback = {
+  state: "idle" | "loading" | "success" | "error";
+  message?: string;
+};
+
+const steps = [
+  { label: "Ingestion", status: "current" as const },
+  { label: "Extraction", status: "upcoming" as const },
+  { label: "Cleansing", status: "upcoming" as const },
+  { label: "Data Enrichment", status: "upcoming" as const },
+  { label: "Content QA", status: "upcoming" as const },
+];
+
+const uploadTabs = [
+  {
+    id: "s3" as const,
+    title: "Amazon S3 / Cloud",
+    description: "Ingest directly from s3:// or classpath URIs.",
+    icon: CloudArrowUpIcon,
+    disabled: false,
+  },
+  {
+    id: "local" as const,
+    title: "Local Upload",
+    description: "Upload files directly from your device.",
+    icon: ArrowUpTrayIcon,
+    disabled: false,
+  },
+  {
+    id: "api" as const,
+    title: "API Endpoint",
+    description: "Send JSON payloads programmatically.",
+    icon: ServerStackIcon,
+    disabled: false,
+  },
+];
+
+const statusStyles: Record<
+  UploadStatus,
+  { label: string; className: string; dot: string }
+> = {
+  uploading: {
+    label: "Uploading",
+    className: "bg-amber-50 text-amber-700",
+    dot: "bg-amber-400",
+  },
+  success: {
+    label: "Accepted",
+    className: "bg-emerald-50 text-emerald-700",
+    dot: "bg-emerald-500",
+  },
+  error: {
+    label: "Error",
+    className: "bg-rose-50 text-rose-700",
+    dot: "bg-rose-500",
+  },
+};
+
+const formatBytes = (bytes: number) => {
+  if (!Number.isFinite(bytes)) return "—";
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.floor(Math.log(bytes) / Math.log(1024));
+  const value = bytes / Math.pow(1024, index);
+  return `${value.toFixed(value > 9 || index === 0 ? 0 : 1)} ${units[index]}`;
+};
+
+const safeJsonParse = (value: string) => {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const getFileLabel = (fileName: string) => {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  switch (extension) {
+    case "json":
+      return { label: "JSON", style: "bg-violet-100 text-violet-700" };
+    case "pdf":
+      return { label: "PDF", style: "bg-rose-100 text-rose-700" };
+    case "xls":
+    case "xlsx":
+      return { label: "XLS", style: "bg-emerald-100 text-emerald-700" };
+    case "doc":
+    case "docx":
+      return { label: "DOC", style: "bg-sky-100 text-sky-700" };
+    default:
+      return { label: "FILE", style: "bg-slate-100 text-slate-600" };
+  }
+};
+
+const FeedbackPill = ({ feedback }: { feedback: ApiFeedback }) => {
+  if (feedback.state === "idle") {
+    return null;
+  }
+
+  const className = clsx(
+    "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
+    feedback.state === "success"
+      ? "bg-emerald-50 text-emerald-700"
+      : feedback.state === "error"
+        ? "bg-rose-50 text-rose-700"
+        : "bg-indigo-50 text-indigo-600",
+  );
+
+  const Icon =
+    feedback.state === "loading"
+      ? ArrowPathIcon
+      : feedback.state === "success"
+        ? CheckCircleIcon
+        : ExclamationCircleIcon;
+
+  const message =
+    feedback.message ??
+    (feedback.state === "loading"
+      ? "Contacting backend..."
+      : feedback.state === "success"
+        ? "Completed successfully."
+        : "Something went wrong.");
+
+  return (
+    <div className={className}>
+      <Icon className={clsx("size-4", feedback.state === "loading" && "animate-spin")} />
+      {message}
+    </div>
+  );
+};
+
+export default function IngestionPage() {
+  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<UploadTab>("local");
+  const [localFile, setLocalFile] = useState<File | null>(null);
+  const [localFileText, setLocalFileText] = useState<string | null>(null);
+  const [apiPayload, setApiPayload] = useState("");
+  const [s3Uri, setS3Uri] = useState("");
+  const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
+  const [previewLabel, setPreviewLabel] = useState("Awaiting content");
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [extractFeedback, setExtractFeedback] = useState<ApiFeedback>({
+    state: "idle",
+  });
+  const [apiFeedback, setApiFeedback] = useState<ApiFeedback>({ state: "idle" });
+  const [s3Feedback, setS3Feedback] = useState<ApiFeedback>({ state: "idle" });
+  const [extracting, setExtracting] = useState(false);
+
+  const filteredTree = useMemo(
+    () => filterTree(treeNodes, searchQuery),
+    [treeNodes, searchQuery],
+  );
+
+  const previewLeaves = useMemo(() => {
+    if (!treeNodes.length) return [];
+    return treeNodes.flatMap((node) => gatherLeafNodes(node));
+  }, [treeNodes]);
+
+  useEffect(() => {
+    if (activeTab === "s3") {
+      setTreeNodes([]);
+      setPreviewLabel("Structure preview unavailable for S3/classpath sources.");
+    } else if (activeTab === "local" && localFileText) {
+      const parsed = safeJsonParse(localFileText);
+      if (parsed) {
+        seedPreviewTree(localFile?.name ?? "Local JSON", parsed);
+      }
+    } else if (activeTab === "api" && apiPayload.trim()) {
+      const parsed = safeJsonParse(apiPayload);
+      if (parsed) {
+        seedPreviewTree("API payload", parsed);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  const seedPreviewTree = (label: string, payload: unknown): TreeNode[] => {
+    const counter = { value: 0 };
+    const children = buildTreeFromJson(payload, [], counter);
+    if (!children.length) {
+      setTreeNodes([]);
+      setPreviewLabel("Unable to derive structure from payload.");
+      setExpandedNodes(new Set());
+      return [];
+    }
+    const rootNode: TreeNode = {
+      id: label,
+      label,
+      path: label,
+      type: "object",
+      children,
+    };
+    const nodes = [rootNode];
+    setTreeNodes(nodes);
+    setPreviewLabel(label);
+    setExpandedNodes(new Set([rootNode.id]));
+    return nodes;
+  };
+
+  const handleLocalFileSelection = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const [file] = Array.from(files);
+    setLocalFile(file);
+    setExtractFeedback({ state: "idle" });
+
+    if (file.name.toLowerCase().endsWith(".json")) {
+      const text = await file.text();
+      setLocalFileText(text);
+      const parsed = safeJsonParse(text);
+      if (parsed) {
+        seedPreviewTree(file.name, parsed);
+      } else {
+        setTreeNodes([]);
+        setPreviewLabel("Uploaded JSON could not be parsed.");
+      }
+    } else {
+      setLocalFileText(null);
+      setTreeNodes([]);
+      setPreviewLabel("Select a JSON file to preview its structure.");
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleExtractData = async () => {
+    setExtracting(true);
+    setExtractFeedback({ state: "loading", message: "Dispatching to backend..." });
+
+    try {
+      if (activeTab === "local") {
+        await processLocalExtraction();
+      } else if (activeTab === "api") {
+        await processApiExtraction();
+      } else {
+        await processS3Extraction();
+      }
+    } catch (error) {
+      setExtractFeedback({
+        state: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Extraction failed unexpectedly.",
+      });
+      setExtracting(false);
+    }
+  };
+
+  const processLocalExtraction = async () => {
+    if (!localFile) {
+      setExtractFeedback({
+        state: "error",
+        message: "Add a JSON file before extracting.",
+      });
+      setExtracting(false);
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", localFile);
+
+    const uploadId = crypto.randomUUID();
+    setUploads((previous) => [
+      {
+        id: uploadId,
+        name: localFile.name,
+        size: localFile.size,
+        type: localFile.type || localFile.name.split(".").pop() || "file",
+        source: "Local",
+        status: "uploading",
+        createdAt: Date.now(),
+      },
+      ...previous,
+    ]);
+
+    const response = await fetch("/api/ingestion/upload", {
+      method: "POST",
+      body: formData,
+    });
+    const payload = await response.json();
+    const details = parseBackendPayload(payload);
+
+    setUploads((previous) =>
+      previous.map((item) =>
+        item.id === uploadId
+          ? {
+              ...item,
+              status: response.ok ? "success" : "error",
+              cleansedId: details.cleansedId ?? item.cleansedId,
+              backendStatus: details.status ?? item.backendStatus,
+              backendMessage: details.message ?? item.backendMessage,
+            }
+          : item,
+      ),
+    );
+
+    if (!response.ok) {
+      setExtractFeedback({
+        state: "error",
+        message: details.message ?? "Backend rejected the upload.",
+      });
+      setExtracting(false);
+      return;
+    }
+
+    saveExtractionContext({
+      mode: "local",
+      metadata: {
+        name: localFile.name,
+        size: localFile.size,
+        source: "Local",
+        cleansedId: details.cleansedId,
+        status: details.status,
+        uploadedAt: Date.now(),
+      },
+      tree: treeNodes,
+      rawJson: localFileText ?? undefined,
+      backendPayload: payload,
+    });
+
+    setExtractFeedback({
+      state: "success",
+      message: "Extraction ready. Redirecting...",
+    });
+    setExtracting(false);
+    router.push("/extraction");
+  };
+
+  const processApiExtraction = async () => {
+    if (!apiPayload.trim()) {
+      setExtractFeedback({
+        state: "error",
+        message: "Paste a JSON payload before extracting.",
+      });
+      setExtracting(false);
+      return;
+    }
+
+    const parsed = safeJsonParse(apiPayload);
+    if (!parsed) {
+      setExtractFeedback({
+        state: "error",
+        message: "Payload must be valid JSON before submission.",
+      });
+      setExtracting(false);
+      return;
+    }
+
+    setApiFeedback({ state: "loading" });
+    const uploadId = crypto.randomUUID();
+    setUploads((previous) => [
+      {
+        id: uploadId,
+        name: "API payload",
+        size: apiPayload.length,
+        type: "application/json",
+        source: "API",
+        status: "uploading",
+        createdAt: Date.now(),
+      },
+      ...previous,
+    ]);
+
+    const response = await fetch("/api/ingestion/payload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payload: parsed }),
+    });
+    const payload = await response.json();
+    const details = parseBackendPayload(payload);
+
+    setUploads((previous) =>
+      previous.map((upload) =>
+        upload.id === uploadId
+          ? {
+              ...upload,
+              status: response.ok ? "success" : "error",
+              cleansedId: details.cleansedId ?? upload.cleansedId,
+              backendStatus: details.status ?? upload.backendStatus,
+              backendMessage:
+                details.message ?? upload.backendMessage,
+            }
+          : upload,
+      ),
+    );
+
+    setApiFeedback({
+      state: response.ok ? "success" : "error",
+      message: response.ok
+        ? "Payload accepted."
+        : "Backend rejected the payload.",
+    });
+
+    if (!response.ok) {
+      setExtractFeedback({
+        state: "error",
+        message: details.message ?? "Backend rejected the payload.",
+      });
+      setExtracting(false);
+      return;
+    }
+
+    const previewNodes = seedPreviewTree("API payload", parsed);
+
+    saveExtractionContext({
+      mode: "api",
+      metadata: {
+        name: "API payload",
+        size: apiPayload.length,
+        source: "API",
+        cleansedId: details.cleansedId,
+        status: details.status,
+        uploadedAt: Date.now(),
+      },
+      tree: previewNodes,
+      rawJson: JSON.stringify(parsed, null, 2),
+      backendPayload: payload,
+    });
+
+    setExtractFeedback({
+      state: "success",
+      message: "Extraction ready. Redirecting...",
+    });
+    setExtracting(false);
+    router.push("/extraction");
+  };
+
+  const processS3Extraction = async () => {
+    const normalized = s3Uri.trim();
+    if (!normalized) {
+      setExtractFeedback({
+        state: "error",
+        message: "Provide an s3://bucket/key (or classpath:) URI first.",
+      });
+      setExtracting(false);
+      return;
+    }
+
+    setS3Feedback({ state: "loading" });
+    const uploadId = crypto.randomUUID();
+    setUploads((previous) => [
+      {
+        id: uploadId,
+        name: normalized,
+        size: 0,
+        type: "text/uri-list",
+        source: "S3",
+        status: "uploading",
+        createdAt: Date.now(),
+      },
+      ...previous,
+    ]);
+
+    const response = await fetch("/api/ingestion/s3", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceUri: normalized }),
+    });
+    const payload = await response.json();
+    const details = parseBackendPayload(payload);
+
+    setUploads((previous) =>
+      previous.map((upload) =>
+        upload.id === uploadId
+          ? {
+              ...upload,
+              status: response.ok ? "success" : "error",
+              cleansedId: details.cleansedId ?? upload.cleansedId,
+              backendStatus:
+                details.status ?? (response.ok ? "ACCEPTED" : upload.backendStatus),
+              backendMessage:
+                details.message ?? upload.backendMessage,
+            }
+          : upload,
+      ),
+    );
+
+    setS3Feedback({
+      state: response.ok ? "success" : "error",
+      message: response.ok
+        ? "Source accepted."
+        : "Backend rejected the S3/classpath request.",
+    });
+
+    if (!response.ok) {
+      setExtractFeedback({
+        state: "error",
+        message: details.message ?? "Backend rejected the request.",
+      });
+      setExtracting(false);
+      return;
+    }
+
+    saveExtractionContext({
+      mode: "s3",
+      metadata: {
+        name: normalized,
+        size: 0,
+        source: "S3",
+        cleansedId: details.cleansedId,
+        status: details.status,
+        uploadedAt: Date.now(),
+      },
+      sourceUri: normalized,
+      backendPayload: payload,
+    });
+
+    setExtractFeedback({
+      state: "success",
+      message: "Extraction ready. Redirecting...",
+    });
+    setExtracting(false);
+    router.push("/extraction");
+  };
+
+  const parseBackendPayload = (payload: any) => {
+    const body = payload?.body;
+    const rawBody = payload?.rawBody;
+    const cleansedId =
+      typeof body === "object" && body !== null
+        ? (body["cleansedDataStoreId"] as string | undefined)
+        : undefined;
+    const status =
+      typeof body === "object" && body !== null
+        ? (body["status"] as string | undefined)
+        : undefined;
+    const message =
+      typeof body === "string"
+        ? body
+        : typeof rawBody === "string"
+          ? rawBody
+          : undefined;
+    return { cleansedId, status, message };
+  };
+
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodes((previous) => {
+      const next = new Set(previous);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
+
+  const renderTree = (nodes: TreeNode[]) =>
+    nodes.map((node) => {
+      const hasChildren = Boolean(node.children?.length);
+      const expanded = expandedNodes.has(node.id);
+
+      return (
+        <div key={node.id} className="space-y-2">
+          <div className="flex items-center gap-2 rounded-lg px-2 py-1.5">
+            {hasChildren ? (
+              <button
+                type="button"
+                onClick={() => toggleNode(node.id)}
+                className="text-slate-500 transition hover:text-slate-800"
+                aria-label={expanded ? "Collapse section" : "Expand section"}
+              >
+                {expanded ? (
+                  <ChevronDownIcon className="size-4" />
+                ) : (
+                  <ChevronRightIcon className="size-4" />
+                )}
+              </button>
+            ) : (
+              <span className="size-4" />
+            )}
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-slate-900">
+                {node.label}
+              </span>
+              {!hasChildren && (
+                <span className="text-xs text-slate-500">{node.path}</span>
+              )}
+            </div>
+          </div>
+          {hasChildren && expanded && (
+            <div className="border-l border-slate-100 pl-4">
+              {renderTree(node.children!)}
+            </div>
+          )}
+        </div>
+      );
+    });
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-black text-lg font-semibold text-white">
+              
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Context</p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  EN-US
+                </span>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  US
+                </span>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  product-detail
+                </span>
+              </div>
+            </div>
+          </div>
+          <nav className="flex flex-1 justify-end gap-2 text-sm font-medium text-slate-500">
+            {steps.map((step, index) => (
+              <div key={step.label} className="flex items-center gap-2">
+                <span
+                  className={clsx(
+                    "rounded-full px-3 py-1",
+                    step.status === "current"
+                      ? "bg-indigo-50 text-indigo-600"
+                      : "bg-slate-50",
+                  )}
+                >
+                  {step.label}
+                </span>
+                {index < steps.length - 1 && (
+                  <span className="text-slate-300">—</span>
+                )}
+              </div>
+            ))}
+          </nav>
+        </div>
+      </header>
+
+      <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <section className="space-y-6">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-400">
+                  Ingestion
+                </p>
+                <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                  Upload Files
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Drag and drop JSON, paste payloads, or point at S3/classpath URIs.
+                </p>
+              </div>
+              <FeedbackPill feedback={extractFeedback} />
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              {uploadTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  disabled={tab.disabled}
+                  onClick={() => !tab.disabled && setActiveTab(tab.id)}
+                  className={clsx(
+                    "rounded-2xl border px-4 py-3 text-left transition",
+                    tab.disabled
+                      ? "border-dashed border-slate-200 text-slate-400"
+                      : activeTab === tab.id
+                        ? "border-indigo-500 bg-indigo-50"
+                        : "border-slate-200 hover:border-indigo-200",
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <tab.icon className="size-5 text-slate-500" />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {tab.title}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {tab.description}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "local" && (
+              <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                <label
+                  htmlFor="file-upload"
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleLocalFileSelection(event.dataTransfer.files);
+                  }}
+                  className="flex cursor-pointer flex-col items-center gap-4"
+                >
+                  <ArrowUpTrayIcon className="size-10 text-indigo-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      Drag a JSON file here or <span className="text-indigo-600 underline">browse</span>
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Single-file uploads only. Max 50 MB.
+                    </p>
+                    {localFile && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Selected: <span className="font-semibold text-slate-800">{localFile.name}</span>
+                      </p>
+                    )}
+                  </div>
+                  <input
+                    id="file-upload"
+                    ref={fileInputRef}
+                    type="file"
+                    className="sr-only"
+                    accept=".json,application/json"
+                    onChange={(event) => handleLocalFileSelection(event.target.files)}
+                  />
+                </label>
+              </div>
+            )}
+
+            {activeTab === "api" && (
+              <div className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <ServerStackIcon className="size-5 text-indigo-500" />
+                  POST /api/ingest-json-payload
+                </div>
+                <textarea
+                  value={apiPayload}
+                  onChange={(event) => {
+                    setApiPayload(event.target.value);
+                    const parsed = safeJsonParse(event.target.value);
+                    if (parsed) {
+                      seedPreviewTree("API payload", parsed);
+                      setApiFeedback({ state: "idle" });
+                    }
+                  }}
+                  rows={6}
+                  placeholder='Paste JSON payload. Example: { "product": { "name": "Vision Pro" } }'
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-900 shadow-inner focus:border-indigo-500 focus:outline-none"
+                />
+                <FeedbackPill feedback={apiFeedback} />
+              </div>
+            )}
+
+            {activeTab === "s3" && (
+              <div className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <CloudArrowUpIcon className="size-5 text-indigo-500" />
+                  GET /api/extract-cleanse-enrich-and-store
+                </div>
+                <input
+                  value={s3Uri}
+                  onChange={(event) => setS3Uri(event.target.value)}
+                  placeholder="s3://my-bucket/path/to/file.json"
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-900 shadow-inner focus:border-indigo-500 focus:outline-none"
+                />
+                <p className="text-xs text-slate-500">
+                  Accepts s3://bucket/key or classpath:relative/path references that the Spring Boot service can access.
+                </p>
+                <FeedbackPill feedback={s3Feedback} />
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold text-slate-900">Upload History</h3>
+              <div className="relative w-full max-w-xs">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
+                <input
+                  type="search"
+                  placeholder="Search coming soon"
+                  className="w-full cursor-not-allowed rounded-full border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-400"
+                  disabled
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {uploads.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
+                  No uploads yet. Drop a JSON file to start the pipeline.
+                </div>
+              )}
+              {uploads.map((upload) => {
+                const status = statusStyles[upload.status];
+                return (
+                  <div
+                    key={upload.id}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-2xl bg-white p-2 shadow-sm">
+                        <DocumentTextIcon className="size-5 text-slate-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {upload.name}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(upload.createdAt).toLocaleString()} • {upload.source}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {upload.cleansedId && (
+                        <code className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-inner">
+                          {upload.cleansedId}
+                        </code>
+                      )}
+                      <span
+                        className={clsx(
+                          "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
+                          status.className,
+                        )}
+                      >
+                        <span className={clsx("size-2 rounded-full", status.dot)} />
+                        {status.label}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Preview
+              </p>
+              <h3 className="text-lg font-semibold text-slate-900">
+                Select Items
+              </h3>
+              <p className="text-xs text-slate-500">Preview is read-only. All fields will be sent forward.</p>
+            </div>
+            <span className="text-sm font-semibold text-slate-600">
+              {previewLeaves.length} fields
+            </span>
+          </div>
+          <div className="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+            <InboxStackIcon className="size-4 text-slate-500" />
+            <span className="text-xs font-semibold text-slate-600">
+              {previewLabel}
+            </span>
+          </div>
+
+          <div className="mt-4">
+            <div className="relative">
+              <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
+              <input
+                type="search"
+                placeholder="Search fields..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
+              />
+            </div>
+            <div className="mt-4 max-h-[420px] overflow-y-auto pr-2">
+              {filteredTree.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
+                  Upload a JSON payload to view its structure.
+                </div>
+              ) : (
+                <div className="space-y-3">{renderTree(filteredTree)}</div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+              <span className="font-semibold text-slate-800">Fields:</span>
+              {previewLeaves.slice(0, 6).map((leaf) => (
+                <span
+                  key={leaf.id}
+                  className="rounded-full bg-white px-3 py-1 font-semibold shadow-sm"
+                >
+                  {leaf.label}
+                </span>
+              ))}
+              {previewLeaves.length > 6 && (
+                <span className="rounded-full bg-white px-3 py-1 font-semibold shadow-sm">
+                  +{previewLeaves.length - 6} more
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleExtractData}
+              disabled={extracting}
+              className={clsx(
+                "mt-4 w-full rounded-full bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-black",
+                extracting && "cursor-not-allowed opacity-60 hover:bg-slate-900",
+              )}
+            >
+              {extracting ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <ArrowPathIcon className="size-4 animate-spin" />
+                  Extracting…
+                </span>
+              ) : (
+                "Extract Data"
+              )}
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}

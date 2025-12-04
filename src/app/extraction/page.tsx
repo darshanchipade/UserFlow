@@ -164,15 +164,33 @@ export default function ExtractionPage() {
     [treeNodes, searchQuery],
   );
 
-  const activeValue = useMemo(() => {
-    if (!activeNodeId) return undefined;
+  const activeDetails = useMemo(() => {
+    if (!activeNodeId) {
+      return {
+        fieldName: "Select a node",
+        fieldPath: "—",
+        value: undefined,
+      };
+    }
     const node = nodeMap.get(activeNodeId);
-    if (!node) return undefined;
-    const normalizedPath =
+    if (!node) {
+      return {
+        fieldName: "Select a node",
+        fieldPath: "—",
+        value: undefined,
+      };
+    }
+    const dataPath =
       node.dataPath && node.dataPath.length
         ? node.dataPath
         : node.path.split(".").slice(1);
-    return getValueAtPath(parsedJson, normalizedPath);
+    const fieldPath = dataPath.length ? dataPath.join(".") : "(root)";
+    const value = getValueAtPath(parsedJson, dataPath);
+    return {
+      fieldName: node.label,
+      fieldPath,
+      value,
+    };
   }, [activeNodeId, nodeMap, parsedJson]);
 
   const toggleNode = (nodeId: string) => {
@@ -409,7 +427,15 @@ export default function ExtractionPage() {
                   Field name
                 </p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
-                  {activeNodeId ?? "Select a node"}
+                  {activeDetails.fieldName}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-white p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-wide text-slate-400">
+                  Field path
+                </p>
+                <p className="mt-1 text-xs font-mono text-slate-700">
+                  {activeDetails.fieldPath}
                 </p>
               </div>
               <div className="rounded-2xl bg-white p-4 shadow-sm">
@@ -417,11 +443,11 @@ export default function ExtractionPage() {
                   Original value
                 </p>
                 <div className="mt-2 max-h-48 overflow-y-auto rounded-xl bg-slate-50 p-3 text-sm text-slate-800">
-                  {activeValue === undefined
+                  {activeDetails.value === undefined
                     ? "—"
-                    : typeof activeValue === "object"
-                      ? JSON.stringify(activeValue, null, 2)
-                      : String(activeValue)}
+                    : typeof activeDetails.value === "object"
+                      ? JSON.stringify(activeDetails.value, null, 2)
+                      : String(activeDetails.value)}
                 </div>
               </div>
             </div>

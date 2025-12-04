@@ -20,14 +20,17 @@ export const buildTreeFromJson = (
   dataPrefix: string[] = [],
   counter: { value: number } = { value: 0 },
 ): TreeNode[] => {
+  const safeIdPrefix = Array.isArray(idPrefix) ? idPrefix : [];
+  const safeDisplayPrefix = Array.isArray(displayPrefix) ? displayPrefix : [];
+  const safeDataPrefix = Array.isArray(dataPrefix) ? dataPrefix : [];
   if (counter.value >= MAX_TREE_NODES) return [];
 
   if (Array.isArray(payload)) {
     return payload.slice(0, MAX_ARRAY_CHILDREN).flatMap((entry, index) => {
       const label = `[${index}]`;
-      const idPath = [...idPrefix, label];
-      const displayPath = [...displayPrefix, label];
-      const dataPath = [...dataPrefix, label];
+      const idPath = [...safeIdPrefix, label];
+      const displayPath = [...safeDisplayPrefix, label];
+      const dataPath = [...safeDataPrefix, label];
       counter.value += 1;
       if (counter.value >= MAX_TREE_NODES) return [];
 
@@ -58,9 +61,9 @@ export const buildTreeFromJson = (
   if (isPlainObject(payload)) {
     return Object.entries(payload).flatMap(([key, value]) => {
       if (counter.value >= MAX_TREE_NODES) return [];
-      const idPath = [...idPrefix, key];
-      const displayPath = [...displayPrefix, key];
-      const dataPath = [...dataPrefix, key];
+      const idPath = [...safeIdPrefix, key];
+      const displayPath = [...safeDisplayPrefix, key];
+      const dataPath = [...safeDataPrefix, key];
       counter.value += 1;
       const childNodes = buildTreeFromJson(
         value,

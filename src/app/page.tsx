@@ -357,24 +357,6 @@ export default function Home() {
     state: "idle",
   });
   const [pendingLocalFiles, setPendingLocalFiles] = useState<File[]>([]);
-  const [extractFeedback, setExtractFeedback] = useState<ApiFeedback>({
-    state: "idle",
-  });
-  const [extracting, setExtracting] = useState(false);
-  const [stageIndex, setStageIndex] = useState(0);
-  const steps = useMemo(
-    () =>
-      pipelineSteps.map((label, index) => ({
-        label,
-        status:
-          index < stageIndex
-            ? ("complete" as const)
-            : index === stageIndex
-              ? ("current" as const)
-              : ("upcoming" as const),
-      })),
-    [stageIndex],
-  );
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
@@ -402,7 +384,6 @@ export default function Home() {
     if (!files || files.length === 0) return;
 
     const incoming = Array.from(files);
-    setStageIndex(0);
     setPendingLocalFiles((previous) => [...previous, ...incoming]);
 
     for (const file of incoming) {
@@ -429,16 +410,6 @@ export default function Home() {
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  };
-
-  const handleApiPayloadChange = (value: string) => {
-    setStageIndex(0);
-    setApiPayload(value);
-  };
-
-  const handleS3UriChange = (value: string) => {
-    setStageIndex(0);
-    setS3Uri(value);
   };
 
   const handleDrop = (event: React.DragEvent<HTMLLabelElement>) => {
@@ -474,13 +445,14 @@ export default function Home() {
     });
   };
 
-  const dispatchApiPayload = async () => {
+  const submitApiPayload = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (!apiPayload.trim()) {
       setApiFeedback({
         state: "error",
         message: "Provide a JSON payload before extracting.",
       });
-      return false;
+      return;
     }
 
     const parsed = safeJsonParse(apiPayload);
@@ -489,7 +461,7 @@ export default function Home() {
         state: "error",
         message: "Payload must be valid JSON before submission.",
       });
-      return false;
+      return;
     }
 
     setApiFeedback({ state: "loading" });
@@ -550,7 +522,6 @@ export default function Home() {
       if (response.ok) {
         setApiPayload("");
       }
-      return response.ok;
     } catch (error) {
       setUploads((previous) =>
         previous.map((upload) =>
@@ -568,7 +539,6 @@ export default function Home() {
         state: "error",
         message: "Failed to reach the Spring Boot API.",
       });
-      return false;
     }
   };
 
@@ -660,14 +630,17 @@ export default function Home() {
     return true;
   };
 
-  const dispatchS3Ingestion = async () => {
+  const submitS3Ingestion = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
     const normalized = s3Uri.trim();
     if (!normalized) {
       setS3Feedback({
         state: "error",
         message: "Provide an s3://bucket/key (or classpath:) URI first.",
       });
-      return false;
+      return;
     }
 
     setS3Feedback({ state: "loading" });
@@ -732,7 +705,6 @@ export default function Home() {
       if (response.ok) {
         setS3Uri("");
       }
-      return response.ok;
     } catch (error) {
       setUploads((previous) =>
         previous.map((upload) =>
@@ -750,7 +722,6 @@ export default function Home() {
         state: "error",
         message: "Failed to reach the Spring Boot API.",
       });
-      return false;
     }
   };
 
@@ -867,50 +838,6 @@ export default function Home() {
     }
   };
 
-  const handleExtractData = async () => {
-    if (extracting) return;
-    setExtractFeedback({ state: "loading" });
-    setExtracting(true);
-    let success = false;
-
-    try {
-      if (activeTab === "local") {
-        success = await dispatchLocalFiles();
-      } else if (activeTab === "api") {
-        success = await dispatchApiPayload();
-      } else {
-        success = await dispatchS3Ingestion();
-      }
-
-      if (success) {
-        setExtractFeedback({
-          state: "success",
-          message: "Extraction request accepted.",
-        });
-        setStageIndex(1);
-      } else {
-        setExtractFeedback((previous) => {
-          if (previous.state !== "loading") {
-            return previous;
-          }
-          return {
-            state: "error",
-            message: "Extraction did not start. Check the active tab inputs.",
-          };
-        });
-      }
-    } catch (error) {
-      setExtractFeedback({
-        state: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Extraction failed unexpectedly.",
-      });
-    } finally {
-      setExtracting(false);
-    }
-  };
 
   const renderTree = (nodes: TreeNode[]) =>
     nodes.map((node) => {
@@ -1110,7 +1037,7 @@ export default function Home() {
             {activeTab === "api" && (
               <form
                 className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                onSubmit={(event) => event.preventDefault()}
+                onSubmit={submitApiPayload}
               >
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                   <ServerStackIcon className="size-5 text-indigo-500" />
@@ -1125,16 +1052,19 @@ export default function Home() {
                 />
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
                   <FeedbackPill feedback={apiFeedback} />
-                  <span className="text-xs text-slate-500">
-                    Click <strong>Extract Data</strong> to send this payload.
-                  </span>
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                  >
+                    Dispatch Payload
+                  </button>
                 </div>
               </form>
             )}
             {activeTab === "s3" && (
               <form
                 className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                onSubmit={(event) => event.preventDefault()}
+                onSubmit={submitS3Ingestion}
               >
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                   <CloudArrowUpIcon className="size-5 text-indigo-500" />
@@ -1152,9 +1082,12 @@ export default function Home() {
                 </p>
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
                   <FeedbackPill feedback={s3Feedback} />
-                  <span className="text-xs text-slate-500">
-                    Click <strong>Extract Data</strong> after entering the URI.
-                  </span>
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                  >
+                    Trigger Ingestion
+                  </button>
                 </div>
               </form>
             )}

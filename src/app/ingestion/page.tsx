@@ -26,7 +26,7 @@ import { saveExtractionContext } from "@/lib/extraction-context";
 
 type UploadTab = "local" | "api" | "s3";
 
-type UploadStatus = "uploading" | "success" | "error";
+type UploadStatus = "queued" | "uploading" | "success" | "error";
 
 type UploadItem = {
   id: string;
@@ -82,6 +82,11 @@ const statusStyles: Record<
   UploadStatus,
   { label: string; className: string; dot: string }
 > = {
+  queued: {
+    label: "Queued",
+    className: "bg-slate-100 text-slate-600",
+    dot: "bg-slate-400",
+  },
   uploading: {
     label: "Uploading",
     className: "bg-amber-50 text-amber-700",
@@ -295,7 +300,7 @@ export default function IngestionPage() {
   };
 
   const processLocalExtraction = async () => {
-    if (!localFile) {
+    if (!localFile || !localFileText) {
       setExtractFeedback({
         state: "error",
         message: "Add a JSON file before extracting.",
@@ -303,9 +308,6 @@ export default function IngestionPage() {
       setExtracting(false);
       return;
     }
-
-    const formData = new FormData();
-    formData.append("file", localFile);
 
     const uploadId = crypto.randomUUID();
     setUploads((previous) => [
@@ -315,41 +317,11 @@ export default function IngestionPage() {
         size: localFile.size,
         type: localFile.type || localFile.name.split(".").pop() || "file",
         source: "Local",
-        status: "uploading",
+        status: "queued",
         createdAt: Date.now(),
       },
       ...previous,
     ]);
-
-    const response = await fetch("/api/ingestion/upload", {
-      method: "POST",
-      body: formData,
-    });
-    const payload = await response.json();
-    const details = parseBackendPayload(payload);
-
-    setUploads((previous) =>
-      previous.map((item) =>
-        item.id === uploadId
-          ? {
-              ...item,
-              status: response.ok ? "success" : "error",
-              cleansedId: details.cleansedId ?? item.cleansedId,
-              backendStatus: details.status ?? item.backendStatus,
-              backendMessage: details.message ?? item.backendMessage,
-            }
-          : item,
-      ),
-    );
-
-    if (!response.ok) {
-      setExtractFeedback({
-        state: "error",
-        message: details.message ?? "Backend rejected the upload.",
-      });
-      setExtracting(false);
-      return;
-    }
 
     saveExtractionContext({
       mode: "local",
@@ -357,18 +329,15 @@ export default function IngestionPage() {
         name: localFile.name,
         size: localFile.size,
         source: "Local",
-        cleansedId: details.cleansedId,
-        status: details.status,
         uploadedAt: Date.now(),
       },
       tree: treeNodes,
-      rawJson: localFileText ?? undefined,
-      backendPayload: payload,
+      rawJson: localFileText,
     });
 
     setExtractFeedback({
       state: "success",
-      message: "Extraction ready. Redirecting...",
+      message: "Payload staged. Redirecting...",
     });
     setExtracting(false);
     router.push("/extraction");
@@ -403,50 +372,11 @@ export default function IngestionPage() {
         size: apiPayload.length,
         type: "application/json",
         source: "API",
-        status: "uploading",
+        status: "queued",
         createdAt: Date.now(),
       },
       ...previous,
     ]);
-
-    const response = await fetch("/api/ingestion/payload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payload: parsed }),
-    });
-    const payload = await response.json();
-    const details = parseBackendPayload(payload);
-
-    setUploads((previous) =>
-      previous.map((upload) =>
-        upload.id === uploadId
-          ? {
-              ...upload,
-              status: response.ok ? "success" : "error",
-              cleansedId: details.cleansedId ?? upload.cleansedId,
-              backendStatus: details.status ?? upload.backendStatus,
-              backendMessage:
-                details.message ?? upload.backendMessage,
-            }
-          : upload,
-      ),
-    );
-
-    setApiFeedback({
-      state: response.ok ? "success" : "error",
-      message: response.ok
-        ? "Payload accepted."
-        : "Backend rejected the payload.",
-    });
-
-    if (!response.ok) {
-      setExtractFeedback({
-        state: "error",
-        message: details.message ?? "Backend rejected the payload.",
-      });
-      setExtracting(false);
-      return;
-    }
 
     const previewNodes = seedPreviewTree("API payload", parsed);
 
@@ -456,18 +386,16 @@ export default function IngestionPage() {
         name: "API payload",
         size: apiPayload.length,
         source: "API",
-        cleansedId: details.cleansedId,
-        status: details.status,
         uploadedAt: Date.now(),
       },
       tree: previewNodes,
       rawJson: JSON.stringify(parsed, null, 2),
-      backendPayload: payload,
     });
 
+    setApiFeedback({ state: "success", message: "Payload staged." });
     setExtractFeedback({
       state: "success",
-      message: "Extraction ready. Redirecting...",
+      message: "Payload staged. Redirecting...",
     });
     setExtracting(false);
     router.push("/extraction");
@@ -493,51 +421,11 @@ export default function IngestionPage() {
         size: 0,
         type: "text/uri-list",
         source: "S3",
-        status: "uploading",
+        status: "queued",
         createdAt: Date.now(),
       },
       ...previous,
     ]);
-
-    const response = await fetch("/api/ingestion/s3", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sourceUri: normalized }),
-    });
-    const payload = await response.json();
-    const details = parseBackendPayload(payload);
-
-    setUploads((previous) =>
-      previous.map((upload) =>
-        upload.id === uploadId
-          ? {
-              ...upload,
-              status: response.ok ? "success" : "error",
-              cleansedId: details.cleansedId ?? upload.cleansedId,
-              backendStatus:
-                details.status ?? (response.ok ? "ACCEPTED" : upload.backendStatus),
-              backendMessage:
-                details.message ?? upload.backendMessage,
-            }
-          : upload,
-      ),
-    );
-
-    setS3Feedback({
-      state: response.ok ? "success" : "error",
-      message: response.ok
-        ? "Source accepted."
-        : "Backend rejected the S3/classpath request.",
-    });
-
-    if (!response.ok) {
-      setExtractFeedback({
-        state: "error",
-        message: details.message ?? "Backend rejected the request.",
-      });
-      setExtracting(false);
-      return;
-    }
 
     saveExtractionContext({
       mode: "s3",
@@ -545,17 +433,15 @@ export default function IngestionPage() {
         name: normalized,
         size: 0,
         source: "S3",
-        cleansedId: details.cleansedId,
-        status: details.status,
         uploadedAt: Date.now(),
       },
       sourceUri: normalized,
-      backendPayload: payload,
     });
 
+    setS3Feedback({ state: "success", message: "Source staged." });
     setExtractFeedback({
       state: "success",
-      message: "Extraction ready. Redirecting...",
+      message: "Source staged. Redirecting...",
     });
     setExtracting(false);
     router.push("/extraction");

@@ -753,16 +753,20 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: upload.cleansedId }),
       });
-      const payload = await response.json();
-      const body = payload.body as Record<string, unknown> | string | null;
+      const rawBody = await response.text();
+      const payload = safeJsonParse(rawBody);
+      const responseBody =
+        typeof payload === "object" && payload !== null
+          ? (payload as Record<string, unknown>)
+          : null;
       const message =
-        typeof body === "string"
-          ? body
-          : typeof body === "object" && body !== null
-            ? (body["message"] as string) ?? JSON.stringify(body)
-            : typeof payload.rawBody === "string"
-              ? payload.rawBody
-              : undefined;
+        typeof payload === "string"
+          ? payload
+          : typeof responseBody?.message === "string"
+            ? responseBody.message
+            : responseBody && typeof responseBody.rawBody === "string"
+              ? responseBody.rawBody
+              : rawBody || undefined;
 
       setUploads((previous) =>
         previous.map((item) =>
@@ -774,7 +778,7 @@ export default function Home() {
                   ? "ENRICHMENT_REQUESTED"
                   : item.backendStatus,
                 enrichmentMessage:
-                  message ??
+                  message ||
                   (response.ok
                     ? "Enrichment started."
                     : "Failed to trigger enrichment."),

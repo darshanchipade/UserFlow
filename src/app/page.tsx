@@ -1368,25 +1368,11 @@ export default function Home() {
             </div>
             <button
               type="button"
-              onClick={handleExtractData}
-              disabled={extracting}
-              className={clsx(
-                "mt-4 w-full rounded-full bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-black",
-                extracting && "cursor-not-allowed opacity-60 hover:bg-slate-900",
-              )}
+              className="mt-4 w-full cursor-not-allowed rounded-full bg-slate-200 py-2.5 text-sm font-semibold text-slate-500"
+              disabled
             >
-              {extracting ? (
-                <span className="inline-flex items-center justify-center gap-2">
-                  <ArrowPathIcon className="size-4 animate-spin" />
-                  Extracting…
-                </span>
-              ) : (
-                "Extract Data"
-              )}
+              Extract Data
             </button>
-            <div className="mt-3">
-              <FeedbackPill feedback={extractFeedback} />
-            </div>
           </div>
         </section>
       </main>

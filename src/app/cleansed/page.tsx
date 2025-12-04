@@ -256,7 +256,7 @@ export default function CleansedPage() {
               No cleansed items available.
             </div>
           ) : (
-            <div className="mt-6 space-y-4">
+            <div className="mt-6 max-h-[60vh] space-y-4 overflow-y-auto pr-2">
               {filteredItems.map((item, index) => (
                 <CleansedCard key={index} item={item} index={index} />
               ))}
@@ -270,9 +270,21 @@ export default function CleansedPage() {
 
 const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
   const record = (item ?? {}) as Record<string, unknown>;
-  const pickValue = (keys: string[]): unknown => {
-    for (const key of keys) {
-      const value = record[key];
+
+  const getNestedValue = (target: unknown, path: string[]): unknown => {
+    if (!target || typeof target !== "object") return undefined;
+    let current: any = target;
+    for (const segment of path) {
+      if (current == null) return undefined;
+      current = current[segment];
+    }
+    return current;
+  };
+
+  const pickValue = (paths: string[][]): unknown => {
+    for (const path of paths) {
+      const value =
+        path.length === 1 ? record[path[0]] : getNestedValue(record, path);
       if (value !== undefined && value !== null && value !== "") {
         return value;
       }
@@ -290,37 +302,72 @@ const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
   };
 
   const formatRules = (value: unknown) => {
-    if (!value) return ["—"];
+    if (!value) return [];
     if (Array.isArray(value)) {
-      return value.length ? value.map((entry) => formatValue(entry)) : ["—"];
+      return value
+        .map((entry) => formatValue(entry))
+        .filter((entry) => entry !== "—");
     }
     if (typeof value === "string") {
-      return value.split(/[,|]/).map((part) => part.trim()).filter(Boolean);
+      return value
+        .split(/[,|]/)
+        .map((part) => part.trim())
+        .filter(Boolean);
     }
     return [formatValue(value)];
   };
 
   const fieldName =
-    (pickValue(["fieldName", "originalFieldName", "itemType", "label", "name"]) as
-      | string
-      | undefined) ?? `Cleansed entry ${index + 1}`;
-  const originalValue = pickValue([
-    "originalValue",
-    "original",
-    "rawValue",
-    "sourceValue",
-    "valueBefore",
-  ]);
-  const cleansedValue = pickValue([
-    "cleansedValue",
-    "cleansedContent",
-    "value",
-    "standardizedValue",
-    "content",
-  ]);
-  const rulesApplied = formatRules(
-    pickValue(["rulesApplied", "rules", "transformations", "actions"]),
-  );
+    (pickValue([
+      ["fieldName"],
+      ["originalFieldName"],
+      ["itemType"],
+      ["label"],
+      ["name"],
+      ["context", "fieldName"],
+    ]) as string | undefined) ?? `Cleansed entry ${index + 1}`;
+
+  const fieldPath =
+    (pickValue([
+      ["fieldPath"],
+      ["path"],
+      ["usagePath"],
+      ["sourcePath"],
+      ["context", "usagePath"],
+    ]) as string | undefined) ?? "—";
+
+  const originalValue =
+    pickValue([
+      ["originalValue"],
+      ["original"],
+      ["rawValue"],
+      ["sourceValue"],
+      ["valueBefore"],
+      ["context", "originalValue"],
+      ["context", "facets", "originalValue"],
+      ["context", "facets", "rawValue"],
+      ["context", "facets", "copy"],
+    ]) ?? record;
+
+  const cleansedValue =
+    pickValue([
+      ["cleansedValue"],
+      ["cleansedContent"],
+      ["value"],
+      ["standardizedValue"],
+      ["content"],
+      ["context", "facets", "cleansedCopy"],
+    ]) ?? record;
+
+  const rulesValue =
+    pickValue([
+      ["rulesApplied"],
+      ["rules"],
+      ["transformations"],
+      ["actions"],
+      ["context", "rules"],
+    ]) ?? (record.skipEnrichment ? ["Skip enrichment flag"] : undefined);
+  const rulesApplied = formatRules(rulesValue);
 
   return (
     <article className="rounded-2xl border border-slate-100 bg-slate-50 p-4 shadow-sm">
@@ -328,9 +375,7 @@ const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-400">Field</p>
           <h4 className="text-sm font-semibold text-slate-900">{fieldName}</h4>
-          <p className="text-xs text-slate-500">
-            {pickValue(["fieldPath", "path", "usagePath", "sourcePath"]) ?? "—"}
-          </p>
+          <p className="text-xs text-slate-500">{fieldPath}</p>
         </div>
         <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
           #{index + 1}
@@ -359,7 +404,7 @@ const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
             Rules applied
           </p>
           <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-700">
-            {rulesApplied.map((rule, ruleIndex) => (
+            {(rulesApplied.length ? rulesApplied : ["—"]).map((rule, ruleIndex) => (
               <span
                 key={ruleIndex}
                 className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700"

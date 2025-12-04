@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import {
   clearCleansedContext,
   loadCleansedContext,
+  saveEnrichmentContext,
 } from "@/lib/extraction-context";
 
 const steps = ["Ingestion", "Extraction", "Cleansing", "Data Enrichment", "Content QA"];
@@ -119,6 +120,32 @@ export default function CleansedPage() {
           : payload?.error ?? "Backend rejected the request.",
       });
       if (response.ok) {
+        const now = Date.now();
+        const existingHistory = context?.status
+          ? [
+              {
+                status: context.status,
+                timestamp: context.metadata.uploadedAt,
+              },
+            ]
+          : [];
+
+        saveEnrichmentContext({
+          metadata: {
+            ...context.metadata,
+            status: "ENRICHMENT_REQUESTED",
+          },
+          items: context.items,
+          startedAt: now,
+          statusHistory: [
+            ...existingHistory,
+            {
+              status: "ENRICHMENT_REQUESTED",
+              timestamp: now,
+            },
+          ],
+        });
+
         clearCleansedContext();
         router.push("/enrichment");
       }

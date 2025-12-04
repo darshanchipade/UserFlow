@@ -339,6 +339,7 @@ const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
   const originalValue =
     pickValue([
       ["originalValue"],
+      ["original", "value"],
       ["original"],
       ["rawValue"],
       ["sourceValue"],
@@ -347,7 +348,7 @@ const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
       ["context", "facets", "originalValue"],
       ["context", "facets", "rawValue"],
       ["context", "facets", "copy"],
-    ]) ?? record;
+    ]) ?? pickValue([["context", "rawValue"]]);
 
   const cleansedValue =
     pickValue([
@@ -357,6 +358,7 @@ const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
       ["standardizedValue"],
       ["content"],
       ["context", "facets", "cleansedCopy"],
+      ["context", "facets", "copy"],
     ]) ?? record;
 
   const rulesValue =

@@ -32,6 +32,8 @@ type UploadItem = {
   backendStatus?: string;
   backendMessage?: string;
   checkingStatus?: boolean;
+  enrichmentStatus?: "idle" | "working" | "success" | "error";
+  enrichmentMessage?: string;
 };
 
 type TreeNode = {
@@ -730,6 +732,74 @@ export default function Home() {
     }
   };
 
+  const canTriggerEnrichment = (upload: UploadItem) =>
+    Boolean(
+      upload.cleansedId &&
+        (upload.backendStatus ?? "").toUpperCase() === "CLEANSED_PENDING_ENRICHMENT",
+    );
+
+  const triggerEnrichment = async (upload: UploadItem) => {
+    if (!upload.cleansedId) return;
+    setUploads((previous) =>
+      previous.map((item) =>
+        item.id === upload.id
+          ? { ...item, enrichmentStatus: "working", enrichmentMessage: undefined }
+          : item,
+      ),
+    );
+    try {
+      const response = await fetch("/api/ingestion/enrichment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: upload.cleansedId }),
+      });
+      const payload = await response.json();
+      const body = payload.body as Record<string, unknown> | string | null;
+      const message =
+        typeof body === "string"
+          ? body
+          : typeof body === "object" && body !== null
+            ? (body["message"] as string) ?? JSON.stringify(body)
+            : typeof payload.rawBody === "string"
+              ? payload.rawBody
+              : undefined;
+
+      setUploads((previous) =>
+        previous.map((item) =>
+          item.id === upload.id
+            ? {
+                ...item,
+                enrichmentStatus: response.ok ? "success" : "error",
+                backendStatus: response.ok
+                  ? "ENRICHMENT_REQUESTED"
+                  : item.backendStatus,
+                enrichmentMessage:
+                  message ??
+                  (response.ok
+                    ? "Enrichment started."
+                    : "Failed to trigger enrichment."),
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      setUploads((previous) =>
+        previous.map((item) =>
+          item.id === upload.id
+            ? {
+                ...item,
+                enrichmentStatus: "error",
+                enrichmentMessage:
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to trigger enrichment.",
+              }
+            : item,
+        ),
+      );
+    }
+  };
+
   const renderTree = (nodes: TreeNode[]) =>
     nodes.map((node) => {
       const hasChildren = Boolean(node.children?.length);
@@ -940,7 +1010,7 @@ export default function Home() {
                     type="submit"
                     className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
                   >
-                    Dispatch Payload
+                    Send to Cleansing
                   </button>
                 </div>
               </form>
@@ -970,7 +1040,7 @@ export default function Home() {
                     type="submit"
                     className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
                   >
-                    Trigger Ingestion
+                    Send to Cleansing
                   </button>
                 </div>
               </form>
@@ -1022,26 +1092,54 @@ export default function Home() {
                       </p>
                     )}
                     {upload.cleansedId && (
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span className="font-semibold text-slate-700">
-                          Cleansed ID:
-                        </span>
-                        <code className="rounded-full bg-slate-100 px-2 py-1">
-                          {upload.cleansedId}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={() => checkStatus(upload)}
-                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
-                        >
-                          {upload.checkingStatus ? (
-                            <ArrowPathIcon className="size-3 animate-spin" />
-                          ) : (
-                            <MagnifyingGlassIcon className="size-3" />
-                          )}
-                          Check status
-                        </button>
-                      </div>
+                      <>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span className="font-semibold text-slate-700">
+                            Cleansed ID:
+                          </span>
+                          <code className="rounded-full bg-slate-100 px-2 py-1">
+                            {upload.cleansedId}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => checkStatus(upload)}
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
+                          >
+                            {upload.checkingStatus ? (
+                              <ArrowPathIcon className="size-3 animate-spin" />
+                            ) : (
+                              <MagnifyingGlassIcon className="size-3" />
+                            )}
+                            Check status
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => triggerEnrichment(upload)}
+                            disabled={
+                              !canTriggerEnrichment(upload) ||
+                              upload.enrichmentStatus === "working"
+                            }
+                            className={clsx(
+                              "inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600",
+                              (!canTriggerEnrichment(upload) ||
+                                upload.enrichmentStatus === "working") &&
+                                "cursor-not-allowed opacity-60 hover:border-slate-200 hover:text-slate-600",
+                            )}
+                          >
+                            {upload.enrichmentStatus === "working" ? (
+                              <ArrowPathIcon className="size-3 animate-spin" />
+                            ) : (
+                              <CloudArrowUpIcon className="size-3" />
+                            )}
+                            Send to Enrichment
+                          </button>
+                        </div>
+                        {upload.enrichmentMessage && (
+                          <p className="mt-2 w-full rounded-xl bg-white/70 px-3 py-2 text-[11px] text-slate-600">
+                            {upload.enrichmentMessage}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 );
@@ -1077,49 +1175,84 @@ export default function Home() {
                 return (
                   <div
                     key={upload.id}
-                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
+                    className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-2xl bg-white p-2 shadow-sm">
-                        <DocumentTextIcon className="size-5 text-slate-500" />
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-2xl bg-white p-2 shadow-sm">
+                          <DocumentTextIcon className="size-5 text-slate-500" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {upload.name}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {new Date(upload.createdAt).toLocaleString()} •{" "}
+                            {upload.source}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          {upload.name}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {new Date(upload.createdAt).toLocaleString()} •{" "}
-                          {upload.source}
-                        </p>
+                      <div className="flex items-center gap-3">
+                        {upload.cleansedId && (
+                          <code className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-inner">
+                            {upload.cleansedId}
+                          </code>
+                        )}
+                        <span
+                          className={clsx(
+                            "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
+                            status.className,
+                          )}
+                        >
+                          <span
+                            className={clsx("size-2 rounded-full", status.dot)}
+                          />
+                          {status.label}
+                        </span>
+                        {upload.cleansedId && (
+                          <button
+                            type="button"
+                            onClick={() => checkStatus(upload)}
+                            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
+                          >
+                            {upload.checkingStatus ? "Checking…" : "Refresh"}
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      {upload.cleansedId && (
-                        <code className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-inner">
-                          {upload.cleansedId}
-                        </code>
-                      )}
-                      <span
-                        className={clsx(
-                          "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
-                          status.className,
-                        )}
-                      >
-                        <span
-                          className={clsx("size-2 rounded-full", status.dot)}
-                        />
-                        {status.label}
-                      </span>
-                      {upload.cleansedId && (
+                    {upload.cleansedId && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span className="font-semibold text-slate-700">
+                          Actions:
+                        </span>
                         <button
                           type="button"
-                          onClick={() => checkStatus(upload)}
-                          className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
+                          onClick={() => triggerEnrichment(upload)}
+                          disabled={
+                            !canTriggerEnrichment(upload) ||
+                            upload.enrichmentStatus === "working"
+                          }
+                          className={clsx(
+                            "inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600",
+                            (!canTriggerEnrichment(upload) ||
+                              upload.enrichmentStatus === "working") &&
+                              "cursor-not-allowed opacity-60 hover:border-slate-200 hover:text-slate-600",
+                          )}
                         >
-                          {upload.checkingStatus ? "Checking…" : "Refresh"}
+                          {upload.enrichmentStatus === "working" ? (
+                            <ArrowPathIcon className="size-3 animate-spin" />
+                          ) : (
+                            <CloudArrowUpIcon className="size-3" />
+                          )}
+                          Send to Enrichment
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
+                    {upload.enrichmentMessage && (
+                      <p className="text-xs text-slate-600">
+                        {upload.enrichmentMessage}
+                      </p>
+                    )}
                   </div>
                 );
               })}

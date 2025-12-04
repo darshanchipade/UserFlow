@@ -19,8 +19,10 @@ import {
 } from "@/lib/tree";
 import {
   ExtractionContext,
+  clearCleansedContext,
   clearExtractionContext,
   loadExtractionContext,
+  saveCleansedContext,
 } from "@/lib/extraction-context";
 
 const formatBytes = (bytes: number) => {
@@ -127,6 +129,7 @@ export default function ExtractionPage() {
   const [nodeMap, setNodeMap] = useState<Map<string, TreeNode>>(new Map());
 
   useEffect(() => {
+    clearCleansedContext();
     const payload = loadExtractionContext();
     if (!payload) return;
     setContext(payload);
@@ -278,22 +281,40 @@ export default function ExtractionPage() {
         throw new Error("No payload available to send to cleansing.");
       }
 
-      const body = await response.json();
+      const payload = await response.json();
+      const body = payload?.body;
       setFeedback({
         state: response.ok ? "success" : "error",
         message: response.ok
           ? "Cleansing pipeline triggered."
-          : body?.error ?? "Backend rejected the request.",
+          : body?.error ?? payload?.error ?? "Backend rejected the request.",
       });
+
+      if (response.ok) {
+        const items =
+          (Array.isArray(body?.cleansedItems)
+            ? (body?.cleansedItems as unknown[])
+            : Array.isArray(body?.items)
+              ? (body?.items as unknown[])
+              : []) ?? [];
+        saveCleansedContext({
+          metadata: context.metadata,
+          items,
+          rawBody: payload?.rawBody ?? (typeof body === "string" ? body : undefined),
+          status: body?.status ?? context.metadata.status,
+        });
+        setSending(false);
+        router.push("/cleansed");
+        return;
+      }
     } catch (error) {
       setFeedback({
         state: "error",
         message:
           error instanceof Error ? error.message : "Failed to send to cleansing.",
       });
-    } finally {
-      setSending(false);
     }
+    setSending(false);
   };
 
   if (!context) {

@@ -1,0 +1,256 @@
+"use client";
+
+import {
+  ArrowPathIcon,
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  MagnifyingGlassIcon,
+} from "@heroicons/react/24/outline";
+import clsx from "clsx";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  clearCleansedContext,
+  loadCleansedContext,
+} from "@/lib/extraction-context";
+
+const steps = ["Ingestion", "Extraction", "Cleansing", "Data Enrichment", "Content QA"];
+
+type Feedback = {
+  state: "idle" | "loading" | "success" | "error";
+  message?: string;
+};
+
+const FeedbackPill = ({ feedback }: { feedback: Feedback }) => {
+  if (feedback.state === "idle") return null;
+  const className = clsx(
+    "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
+    feedback.state === "success"
+      ? "bg-emerald-50 text-emerald-700"
+      : feedback.state === "error"
+        ? "bg-rose-50 text-rose-700"
+        : "bg-indigo-50 text-indigo-600",
+  );
+  const Icon =
+    feedback.state === "loading"
+      ? ArrowPathIcon
+      : feedback.state === "success"
+        ? CheckCircleIcon
+        : ExclamationCircleIcon;
+  const message =
+    feedback.message ??
+    (feedback.state === "loading"
+      ? "Contacting backend..."
+      : feedback.state === "success"
+        ? "Completed successfully."
+        : "Something went wrong.");
+  return (
+    <div className={className}>
+      <Icon className={clsx("size-4", feedback.state === "loading" && "animate-spin")} />
+      {message}
+    </div>
+  );
+};
+
+const formatDateTime = (timestamp?: number) => {
+  if (!timestamp) return "—";
+  return new Date(timestamp).toLocaleString();
+};
+
+export default function CleansedPage() {
+  const router = useRouter();
+  const [feedback, setFeedback] = useState<Feedback>({ state: "idle" });
+  const [context, setContext] = useState(loadCleansedContext());
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (!context) {
+      router.replace("/extraction");
+    }
+  }, [context, router]);
+
+  const filteredItems = useMemo(() => {
+    if (!context?.items || !context.items.length) return [];
+    if (!search.trim()) return context.items;
+    const query = search.toLowerCase();
+    return context.items.filter((item) =>
+      JSON.stringify(item).toLowerCase().includes(query),
+    );
+  }, [context, search]);
+
+  const sendToEnrichment = async () => {
+    if (!context?.metadata.cleansedId) {
+      setFeedback({
+        state: "error",
+        message: "Cleansed ID missing. Cannot trigger enrichment.",
+      });
+      return;
+    }
+    setFeedback({ state: "loading" });
+    try {
+      const response = await fetch("/api/ingestion/enrichment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: context.metadata.cleansedId }),
+      });
+      const payload = await response.json();
+      setFeedback({
+        state: response.ok ? "success" : "error",
+        message: response.ok
+          ? "Enrichment pipeline started."
+          : payload?.error ?? "Backend rejected the request.",
+      });
+      if (response.ok) {
+        clearCleansedContext();
+        router.push("/enrichment");
+      }
+    } catch (error) {
+      setFeedback({
+        state: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to reach backend.",
+      });
+    }
+  };
+
+  if (!context) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <p className="text-lg font-semibold text-slate-900">No cleansed data available.</p>
+          <p className="mt-2 text-sm text-slate-500">Return to Extraction and run cleansing first.</p>
+          <button
+            type="button"
+            onClick={() => router.push("/extraction")}
+            className="mt-6 rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white"
+          >
+            Back to Extraction
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Cleansed items</p>
+              <h1 className="text-xl font-semibold text-slate-900">Review cleansed content</h1>
+            </div>
+            <FeedbackPill feedback={feedback} />
+          </div>
+          <nav className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+            {steps.map((label, index) => (
+              <div key={label} className="flex items-center gap-2">
+                <span
+                  className={clsx(
+                    "rounded-full px-3 py-1",
+                    index === 2
+                      ? "bg-indigo-50 text-indigo-600"
+                      : index < 2
+                        ? "bg-slate-900 text-white"
+                        : "bg-slate-100 text-slate-500",
+                  )}
+                >
+                  {label}
+                </span>
+                {index < steps.length - 1 && <span className="text-slate-300">—</span>}
+              </div>
+            ))}
+          </nav>
+        </div>
+      </header>
+
+      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Summary</p>
+              <h2 className="text-lg font-semibold text-slate-900">Processing details</h2>
+            </div>
+            <button
+              type="button"
+              onClick={sendToEnrichment}
+              className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
+            >
+              Send to Enrichment
+            </button>
+          </div>
+          <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Cleansed ID</dt>
+              <dd className="text-sm font-semibold text-slate-900">
+                {context.metadata.cleansedId ?? "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Source</dt>
+              <dd className="text-sm font-semibold text-slate-900">{context.metadata.source}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Status</dt>
+              <dd className="text-sm font-semibold text-slate-900">{context.status ?? "CLEANSED"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Completed</dt>
+              <dd className="text-sm font-semibold text-slate-900">
+                {formatDateTime(context.metadata.uploadedAt)}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-slate-900">
+              Cleansed items ({filteredItems.length})
+            </h3>
+            <div className="relative w-full max-w-sm">
+              <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400" />
+              <input
+                type="search"
+                placeholder="Search items..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="w-full rounded-full border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {filteredItems.length === 0 ? (
+            <div className="mt-6 rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-500">
+              No cleansed items available.
+            </div>
+          ) : (
+            <div className="mt-6 space-y-4">
+              {filteredItems.map((item, index) => (
+                <article
+                  key={index}
+                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-400">Item</p>
+                      <h4 className="text-sm font-semibold text-slate-900">
+                        Cleansed entry {index + 1}
+                      </h4>
+                    </div>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                      Read-only
+                    </span>
+                  </div>
+                  <pre className="mt-3 max-h-64 overflow-y-auto rounded-xl bg-white p-3 text-xs text-slate-800">
+                    {JSON.stringify(item, null, 2)}
+                  </pre>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}

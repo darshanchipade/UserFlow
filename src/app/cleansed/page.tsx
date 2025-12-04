@@ -62,6 +62,7 @@ export default function CleansedPage() {
   const [feedback, setFeedback] = useState<Feedback>({ state: "idle" });
   const [context, setContext] = useState(loadCleansedContext());
   const [search, setSearch] = useState("");
+  const [sendingEnrichment, setSendingEnrichment] = useState(false);
 
   useEffect(() => {
     if (!context) {

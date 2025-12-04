@@ -28,35 +28,40 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const sourceUri =
+  const id =
     typeof incoming === "object" && incoming !== null
-      ? (incoming as Record<string, unknown>).sourceUri
+      ? ((incoming as Record<string, unknown>).id as string | undefined)
       : undefined;
 
-  if (typeof sourceUri !== "string" || !sourceUri.trim()) {
+  if (!id) {
     return NextResponse.json(
-      { error: "`sourceUri` must be a non-empty string." },
+      { error: "Missing `id` in request body." },
       { status: 400 },
     );
   }
 
-  const upstreamUrl = new URL(
-    "/api/extract-cleanse-enrich-and-store",
-    backendBaseUrl.endsWith("/") ? backendBaseUrl : `${backendBaseUrl}/`,
-  );
-  upstreamUrl.searchParams.set("sourceUri", sourceUri.trim());
-
   try {
-    const upstream = await fetch(upstreamUrl, {
-      method: "GET",
-    });
+    const upstream = await fetch(
+      `${backendBaseUrl}/api/start-enrichment/${encodeURIComponent(id)}`,
+      {
+        method: "POST",
+      },
+    );
+
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);
+    const statusValue =
+      typeof body === "object" && body !== null && typeof (body as Record<string, unknown>).status === "string"
+        ? ((body as Record<string, unknown>).status as string)
+        : typeof rawBody === "string"
+          ? rawBody
+          : null;
 
     return NextResponse.json(
       {
         upstreamStatus: upstream.status,
         upstreamOk: upstream.ok,
+        status: statusValue,
         body,
         rawBody,
       },

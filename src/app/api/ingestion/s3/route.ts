@@ -2,20 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 
 const backendBaseUrl = process.env.SPRINGBOOT_BASE_URL;
 
-const safeStringify = (input: unknown) => {
-  try {
-    return JSON.stringify(input);
-  } catch {
-    return null;
-  }
-};
-
 const safeParse = (payload: string) => {
   try {
     return JSON.parse(payload);
   } catch {
     return payload;
   }
+};
+
+const extractSourceUri = (payload: unknown): string | null => {
+  if (typeof payload === "string") {
+    const trimmed = payload.trim();
+    return trimmed.length ? trimmed : null;
+  }
+
+  if (typeof payload === "object" && payload !== null) {
+    const candidate =
+      (payload as Record<string, unknown>).sourceUri ??
+      (payload as Record<string, unknown>).s3Uri;
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      return trimmed.length ? trimmed : null;
+    }
+  }
+
+  return null;
 };
 
 export async function POST(request: NextRequest) {
@@ -36,36 +47,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const payload =
-    typeof incoming === "object" && incoming !== null
-      ? (incoming as Record<string, unknown>).payload
-      : undefined;
-
-  if (payload === undefined) {
+  const sourceUri = extractSourceUri(incoming);
+  if (!sourceUri) {
     return NextResponse.json(
-      { error: "Missing `payload` attribute." },
+      { error: "Missing `sourceUri` (accepts string, sourceUri, or s3Uri)." },
       { status: 400 },
     );
   }
 
-  const serialized = safeStringify(payload);
-  if (serialized === null) {
-    return NextResponse.json(
-      { error: "Payload could not be serialized." },
-      { status: 400 },
-    );
-  }
+  const url = new URL(
+    `/api/extract-cleanse-enrich-and-store?${new URLSearchParams({
+      sourceUri,
+    }).toString()}`,
+    backendBaseUrl,
+  );
 
   try {
-    const targetUrl = new URL("/api/ingest-json-payload", backendBaseUrl);
-    const upstream = await fetch(targetUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: serialized,
-    });
-
+    const upstream = await fetch(url, { method: "GET" });
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);
 

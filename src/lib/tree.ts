@@ -2,6 +2,7 @@ export type TreeNode = {
   id: string;
   label: string;
   path: string;
+  dataPath: string[];
   type: "object" | "array" | "value";
   children?: TreeNode[];
 };
@@ -14,7 +15,8 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 
 export const buildTreeFromJson = (
   payload: unknown,
-  parentPath: string[] = [],
+  displayPrefix: string[] = [],
+  dataPrefix: string[] = [],
   counter: { value: number } = { value: 0 },
 ): TreeNode[] => {
   if (counter.value >= MAX_TREE_NODES) return [];
@@ -22,16 +24,23 @@ export const buildTreeFromJson = (
   if (Array.isArray(payload)) {
     return payload.slice(0, MAX_ARRAY_CHILDREN).flatMap((entry, index) => {
       const label = `[${index}]`;
-      const id = [...parentPath, label].join(".");
+      const displayPath = [...displayPrefix, label];
+      const dataPath = [...dataPrefix, label];
       counter.value += 1;
       if (counter.value >= MAX_TREE_NODES) return [];
 
-      const childNodes = buildTreeFromJson(entry, [...parentPath, label], counter);
+      const childNodes = buildTreeFromJson(
+        entry,
+        displayPath,
+        dataPath,
+        counter,
+      );
       return [
         {
-          id,
+          id: displayPath.join("."),
           label,
-          path: id,
+          path: displayPath.join("."),
+          dataPath,
           type: Array.isArray(entry)
             ? "array"
             : isPlainObject(entry)
@@ -46,14 +55,21 @@ export const buildTreeFromJson = (
   if (isPlainObject(payload)) {
     return Object.entries(payload).flatMap(([key, value]) => {
       if (counter.value >= MAX_TREE_NODES) return [];
-      const id = [...parentPath, key].join(".");
+      const displayPath = [...displayPrefix, key];
+      const dataPath = [...dataPrefix, key];
       counter.value += 1;
-      const childNodes = buildTreeFromJson(value, [...parentPath, key], counter);
+      const childNodes = buildTreeFromJson(
+        value,
+        displayPath,
+        dataPath,
+        counter,
+      );
       return [
         {
-          id,
+          id: displayPath.join("."),
           label: key,
-          path: id,
+          path: displayPath.join("."),
+          dataPath,
           type: Array.isArray(value)
             ? "array"
             : isPlainObject(value)

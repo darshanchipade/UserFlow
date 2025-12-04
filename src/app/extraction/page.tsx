@@ -77,9 +77,15 @@ const FeedbackPill = ({ feedback }: { feedback: Feedback }) => {
   );
 };
 
-const getValueAtPath = (payload: any, path: string) => {
+const getValueAtPath = (payload: any, path: string | string[]) => {
   if (!payload) return undefined;
-  const segments = path.split(".");
+  const segments = Array.isArray(path)
+    ? path
+    : path
+        .split(".")
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+  if (!segments.length) return payload;
   let current: any = payload;
   for (const segment of segments) {
     if (!segment) continue;
@@ -132,9 +138,22 @@ export default function ExtractionPage() {
     } else if (payload.rawJson) {
       const parsed = safeJsonParse(payload.rawJson);
       if (parsed) {
-        const nodes = buildTreeFromJson(parsed, [], { value: 0 });
+        const label = payload.metadata?.name ?? "Payload";
+        const counter = { value: 0 };
+        const children = buildTreeFromJson(parsed, [label], [], counter);
+        const rootNode: TreeNode = {
+          id: label,
+          label,
+          path: label,
+          dataPath: [],
+          type: "object",
+          children,
+        };
+        const nodes = [rootNode];
         setTreeNodes(nodes);
         setNodeMap(flattenTree(nodes));
+        setExpandedNodes(new Set([label]));
+        setActiveNodeId(label);
       }
     }
     setParsedJson(safeJsonParse(payload.rawJson));
@@ -149,7 +168,11 @@ export default function ExtractionPage() {
     if (!activeNodeId) return undefined;
     const node = nodeMap.get(activeNodeId);
     if (!node) return undefined;
-    return getValueAtPath(parsedJson, node.path.replace(/^[^\.]+\.?/, ""));
+    const normalizedPath =
+      node.dataPath && node.dataPath.length
+        ? node.dataPath
+        : node.path.split(".").slice(1);
+    return getValueAtPath(parsedJson, normalizedPath);
   }, [activeNodeId, nodeMap, parsedJson]);
 
   const toggleNode = (nodeId: string) => {

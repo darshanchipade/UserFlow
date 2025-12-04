@@ -221,7 +221,7 @@ export default function IngestionPage() {
 
   const seedPreviewTree = (label: string, payload: unknown): TreeNode[] => {
     const counter = { value: 0 };
-    const children = buildTreeFromJson(payload, [], counter);
+    const children = buildTreeFromJson(payload, [label], [], counter);
     if (!children.length) {
       setTreeNodes([]);
       setPreviewLabel("Unable to derive structure from payload.");
@@ -232,6 +232,7 @@ export default function IngestionPage() {
       id: label,
       label,
       path: label,
+      dataPath: [],
       type: "object",
       children,
     };

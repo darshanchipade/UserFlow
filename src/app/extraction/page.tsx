@@ -140,7 +140,7 @@ export default function ExtractionPage() {
       if (parsed) {
         const label = payload.metadata?.name ?? "Payload";
         const counter = { value: 0 };
-        const children = buildTreeFromJson(parsed, [label], [], counter);
+        const children = buildTreeFromJson(parsed, [label], [], [], counter);
         const rootNode: TreeNode = {
           id: label,
           label,

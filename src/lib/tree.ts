@@ -15,6 +15,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 
 export const buildTreeFromJson = (
   payload: unknown,
+  idPrefix: string[] = [],
   displayPrefix: string[] = [],
   dataPrefix: string[] = [],
   counter: { value: number } = { value: 0 },
@@ -24,6 +25,7 @@ export const buildTreeFromJson = (
   if (Array.isArray(payload)) {
     return payload.slice(0, MAX_ARRAY_CHILDREN).flatMap((entry, index) => {
       const label = `[${index}]`;
+      const idPath = [...idPrefix, label];
       const displayPath = [...displayPrefix, label];
       const dataPath = [...dataPrefix, label];
       counter.value += 1;
@@ -31,13 +33,14 @@ export const buildTreeFromJson = (
 
       const childNodes = buildTreeFromJson(
         entry,
+        idPath,
         displayPath,
         dataPath,
         counter,
       );
       return [
         {
-          id: displayPath.join("."),
+          id: idPath.join("."),
           label,
           path: displayPath.join("."),
           dataPath,
@@ -55,18 +58,20 @@ export const buildTreeFromJson = (
   if (isPlainObject(payload)) {
     return Object.entries(payload).flatMap(([key, value]) => {
       if (counter.value >= MAX_TREE_NODES) return [];
+      const idPath = [...idPrefix, key];
       const displayPath = [...displayPrefix, key];
       const dataPath = [...dataPrefix, key];
       counter.value += 1;
       const childNodes = buildTreeFromJson(
         value,
+        idPath,
         displayPath,
         dataPath,
         counter,
       );
       return [
         {
-          id: displayPath.join("."),
+          id: idPath.join("."),
           label: key,
           path: displayPath.join("."),
           dataPath,

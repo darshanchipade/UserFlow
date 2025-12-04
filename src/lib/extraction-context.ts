@@ -11,6 +11,7 @@ export type ExtractionContext = {
     uploadedAt: number;
   };
   tree?: TreeNode[];
+  stagedFileBase64?: string;
   rawJson?: string;
   sourceUri?: string;
   backendPayload?: unknown;

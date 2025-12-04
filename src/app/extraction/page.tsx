@@ -308,6 +308,19 @@ export default function ExtractionPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sourceUri: context.sourceUri }),
         });
+      } else if (context.mode === "local" && context.stagedFileBase64) {
+        const blob = Uint8Array.from(atob(context.stagedFileBase64), (c) =>
+          c.charCodeAt(0),
+        );
+        const file = new File([blob], context.metadata.name, {
+          type: "application/json",
+        });
+        const formData = new FormData();
+        formData.append("file", file);
+        response = await fetch("/api/ingestion/upload", {
+          method: "POST",
+          body: formData,
+        });
       } else if (context.rawJson) {
         const parsed = safeJsonParse(context.rawJson);
         if (!parsed) {

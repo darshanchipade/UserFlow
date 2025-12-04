@@ -323,6 +323,8 @@ export default function IngestionPage() {
       ...previous,
     ]);
 
+    const stagedFileBase64 = btoa(localFileText);
+
     saveExtractionContext({
       mode: "local",
       metadata: {
@@ -333,6 +335,7 @@ export default function IngestionPage() {
       },
       tree: treeNodes,
       rawJson: localFileText,
+      stagedFileBase64,
     });
 
     setExtractFeedback({

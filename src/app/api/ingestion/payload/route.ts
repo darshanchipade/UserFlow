@@ -57,16 +57,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(
-      `${backendBaseUrl}/api/ingest-json-payload`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: serialized,
+    const targetUrl = new URL("/api/ingest-json-payload", backendBaseUrl);
+    const upstream = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: serialized,
+    });
 
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);

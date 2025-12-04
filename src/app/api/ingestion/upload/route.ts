@@ -21,13 +21,14 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData();
 
   try {
-    const upstream = await fetch(
-      `${backendBaseUrl}/api/extract-cleanse-enrich-and-store`,
-      {
-        method: "POST",
-        body: formData,
-      },
+    const targetUrl = new URL(
+      "/api/extract-cleanse-enrich-and-store",
+      backendBaseUrl,
     );
+    const upstream = await fetch(targetUrl, {
+      method: "POST",
+      body: formData,
+    });
 
     const rawBody = await upstream.text();
     const body = safeParseJson(rawBody);

@@ -116,6 +116,26 @@ const flattenTree = (nodes: TreeNode[]) => {
   return map;
 };
 
+const extractCleansedItems = (input: unknown): unknown[] => {
+  if (!input) return [];
+  if (Array.isArray(input)) return input;
+  if (typeof input !== "object") return [];
+  const record = input as Record<string, unknown>;
+  const direct = [
+    record.cleansedItems,
+    record.items,
+    record.data,
+    record.payload,
+    (record.cleansedItems as Record<string, unknown> | undefined)?.items,
+  ];
+  for (const candidate of direct) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+  return [];
+};
+
 export default function ExtractionPage() {
   const router = useRouter();
   const [context, setContext] = useState<ExtractionContext | null>(null);
@@ -283,6 +303,11 @@ export default function ExtractionPage() {
 
       const payload = await response.json();
       const body = payload?.body;
+      const parsedRaw = safeJsonParse(payload?.rawBody);
+      let items = extractCleansedItems(body);
+      if (!items.length) {
+        items = extractCleansedItems(parsedRaw);
+      }
       setFeedback({
         state: response.ok ? "success" : "error",
         message: response.ok
@@ -291,12 +316,6 @@ export default function ExtractionPage() {
       });
 
       if (response.ok) {
-        const items =
-          (Array.isArray(body?.cleansedItems)
-            ? (body?.cleansedItems as unknown[])
-            : Array.isArray(body?.items)
-              ? (body?.items as unknown[])
-              : []) ?? [];
         saveCleansedContext({
           metadata: context.metadata,
           items,

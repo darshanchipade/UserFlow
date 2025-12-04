@@ -69,14 +69,30 @@ export default function CleansedPage() {
     }
   }, [context, router]);
 
+  const allItems = useMemo(() => {
+    if (context?.items && context.items.length) {
+      return context.items;
+    }
+    if (context?.rawBody) {
+      try {
+        const parsed = JSON.parse(context.rawBody);
+        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed?.cleansedItems)) return parsed.cleansedItems;
+        if (Array.isArray(parsed?.items)) return parsed.items;
+      } catch {
+        // ignore
+      }
+    }
+    return [];
+  }, [context]);
+
   const filteredItems = useMemo(() => {
-    if (!context?.items || !context.items.length) return [];
-    if (!search.trim()) return context.items;
+    if (!search.trim()) return allItems;
     const query = search.toLowerCase();
-    return context.items.filter((item) =>
+    return allItems.filter((item) =>
       JSON.stringify(item).toLowerCase().includes(query),
     );
-  }, [context, search]);
+  }, [allItems, search]);
 
   const sendToEnrichment = async () => {
     if (!context?.metadata.cleansedId) {
@@ -86,6 +102,7 @@ export default function CleansedPage() {
       });
       return;
     }
+    setSendingEnrichment(true);
     setFeedback({ state: "loading" });
     try {
       const response = await fetch("/api/ingestion/enrichment", {
@@ -110,6 +127,8 @@ export default function CleansedPage() {
         message:
           error instanceof Error ? error.message : "Failed to reach backend.",
       });
+    } finally {
+      setSendingEnrichment(false);
     }
   };
 
@@ -174,9 +193,20 @@ export default function CleansedPage() {
             <button
               type="button"
               onClick={sendToEnrichment}
-              className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
+              disabled={sendingEnrichment}
+              className={clsx(
+                "inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white",
+                sendingEnrichment && "cursor-not-allowed opacity-60",
+              )}
             >
-              Send to Enrichment
+              {sendingEnrichment ? (
+                <>
+                  <ArrowPathIcon className="size-4 animate-spin" />
+                  Sending…
+                </>
+              ) : (
+                "Send to Enrichment"
+              )}
             </button>
           </div>
           <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -227,25 +257,7 @@ export default function CleansedPage() {
           ) : (
             <div className="mt-6 space-y-4">
               {filteredItems.map((item, index) => (
-                <article
-                  key={index}
-                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4 shadow-sm"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-slate-400">Item</p>
-                      <h4 className="text-sm font-semibold text-slate-900">
-                        Cleansed entry {index + 1}
-                      </h4>
-                    </div>
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                      Read-only
-                    </span>
-                  </div>
-                  <pre className="mt-3 max-h-64 overflow-y-auto rounded-xl bg-white p-3 text-xs text-slate-800">
-                    {JSON.stringify(item, null, 2)}
-                  </pre>
-                </article>
+                <CleansedCard key={index} item={item} index={index} />
               ))}
             </div>
           )}
@@ -254,3 +266,109 @@ export default function CleansedPage() {
     </div>
   );
 }
+
+const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
+  const record = (item ?? {}) as Record<string, unknown>;
+  const pickValue = (keys: string[]): unknown => {
+    for (const key of keys) {
+      const value = record[key];
+      if (value !== undefined && value !== null && value !== "") {
+        return value;
+      }
+    }
+    return undefined;
+  };
+
+  const formatValue = (value: unknown) => {
+    if (value === undefined) return "—";
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    return JSON.stringify(value, null, 2);
+  };
+
+  const formatRules = (value: unknown) => {
+    if (!value) return ["—"];
+    if (Array.isArray(value)) {
+      return value.length ? value.map((entry) => formatValue(entry)) : ["—"];
+    }
+    if (typeof value === "string") {
+      return value.split(/[,|]/).map((part) => part.trim()).filter(Boolean);
+    }
+    return [formatValue(value)];
+  };
+
+  const fieldName =
+    (pickValue(["fieldName", "originalFieldName", "itemType", "label", "name"]) as
+      | string
+      | undefined) ?? `Cleansed entry ${index + 1}`;
+  const originalValue = pickValue([
+    "originalValue",
+    "original",
+    "rawValue",
+    "sourceValue",
+    "valueBefore",
+  ]);
+  const cleansedValue = pickValue([
+    "cleansedValue",
+    "cleansedContent",
+    "value",
+    "standardizedValue",
+    "content",
+  ]);
+  const rulesApplied = formatRules(
+    pickValue(["rulesApplied", "rules", "transformations", "actions"]),
+  );
+
+  return (
+    <article className="rounded-2xl border border-slate-100 bg-slate-50 p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-400">Field</p>
+          <h4 className="text-sm font-semibold text-slate-900">{fieldName}</h4>
+          <p className="text-xs text-slate-500">
+            {pickValue(["fieldPath", "path", "usagePath", "sourcePath"]) ?? "—"}
+          </p>
+        </div>
+        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+          #{index + 1}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="rounded-xl bg-white p-4 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Original value
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
+            {formatValue(originalValue)}
+          </p>
+        </div>
+        <div className="rounded-xl bg-white p-4 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Cleansed value
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
+            {formatValue(cleansedValue)}
+          </p>
+        </div>
+        <div className="md:col-span-2 rounded-xl bg-white p-4 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Rules applied
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-700">
+            {rulesApplied.map((rule, ruleIndex) => (
+              <span
+                key={ruleIndex}
+                className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700"
+              >
+                {rule}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+};

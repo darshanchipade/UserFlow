@@ -348,7 +348,11 @@ const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
       ["context", "facets", "originalValue"],
       ["context", "facets", "rawValue"],
       ["context", "facets", "copy"],
-    ]) ?? pickValue([["context", "rawValue"]]);
+      ["context", "facets", "analyticsText"],
+      ["context", "facets", "analyticsTags"],
+      ["context", "facets", "pageAnalytics"],
+      ["context", "facets", "analytics"],
+    ]) ?? pickValue([["context", "rawValue"], ["context", "facets"]]);
 
   const cleansedValue =
     pickValue([
@@ -359,6 +363,7 @@ const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
       ["content"],
       ["context", "facets", "cleansedCopy"],
       ["context", "facets", "copy"],
+      ["context", "facets", "analyticsText"],
     ]) ?? record;
 
   const rulesValue =
@@ -368,6 +373,8 @@ const CleansedCard = ({ item, index }: { item: unknown; index: number }) => {
       ["transformations"],
       ["actions"],
       ["context", "rules"],
+      ["context", "facets", "rules"],
+      ["context", "facets", "transformations"],
     ]) ?? (record.skipEnrichment ? ["Skip enrichment flag"] : undefined);
   const rulesApplied = formatRules(rulesValue);
 

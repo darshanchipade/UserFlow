@@ -280,16 +280,39 @@ export default function ExtractionPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              Extraction
-            </p>
-            <h1 className="text-xl font-semibold text-slate-900">
-              Review structured content
-            </h1>
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Extraction
+              </p>
+              <h1 className="text-xl font-semibold text-slate-900">
+                Review structured content
+              </h1>
+            </div>
+            <FeedbackPill feedback={feedback} />
           </div>
-          <FeedbackPill feedback={feedback} />
+          <nav className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+            {["Ingestion", "Extraction", "Cleansing", "Data Enrichment", "Content QA"].map(
+              (label, index) => (
+                <div key={label} className="flex items-center gap-2">
+                  <span
+                    className={clsx(
+                      "rounded-full px-3 py-1",
+                      index === 1
+                        ? "bg-indigo-50 text-indigo-600"
+                        : index < 1
+                          ? "bg-slate-900 text-white"
+                          : "bg-slate-100 text-slate-500",
+                    )}
+                  >
+                    {label}
+                  </span>
+                  {index < 4 && <span className="text-slate-300">—</span>}
+                </div>
+              ),
+            )}
+          </nav>
         </div>
       </header>
 
@@ -357,26 +380,26 @@ export default function ExtractionPage() {
             <h2 className="text-lg font-semibold text-slate-900">
               Field details
             </h2>
-            <div className="mt-4 space-y-3 rounded-2xl bg-slate-50 p-4">
-              <div>
+            <div className="mt-4 space-y-4 rounded-2xl bg-slate-50 p-4">
+              <div className="rounded-2xl bg-white p-4 shadow-sm">
                 <p className="text-xs uppercase tracking-wide text-slate-400">
-                  Field
+                  Field name
                 </p>
-                <p className="text-sm font-semibold text-slate-900">
+                <p className="mt-1 text-sm font-semibold text-slate-900">
                   {activeNodeId ?? "Select a node"}
                 </p>
               </div>
-              <div>
+              <div className="rounded-2xl bg-white p-4 shadow-sm">
                 <p className="text-xs uppercase tracking-wide text-slate-400">
                   Original value
                 </p>
-                <pre className="max-h-48 overflow-y-auto rounded-xl bg-white p-3 text-sm text-slate-800">
+                <div className="mt-2 max-h-48 overflow-y-auto rounded-xl bg-slate-50 p-3 text-sm text-slate-800">
                   {activeValue === undefined
                     ? "—"
                     : typeof activeValue === "object"
                       ? JSON.stringify(activeValue, null, 2)
                       : String(activeValue)}
-                </pre>
+                </div>
               </div>
             </div>
           </section>

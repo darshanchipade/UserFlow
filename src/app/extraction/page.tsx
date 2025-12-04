@@ -117,23 +117,44 @@ const flattenTree = (nodes: TreeNode[]) => {
 };
 
 const extractCleansedItems = (input: unknown): unknown[] => {
-  if (!input) return [];
-  if (Array.isArray(input)) return input;
-  if (typeof input !== "object") return [];
-  const record = input as Record<string, unknown>;
-  const direct = [
-    record.cleansedItems,
-    record.items,
-    record.data,
-    record.payload,
-    (record.cleansedItems as Record<string, unknown> | undefined)?.items,
-  ];
-  for (const candidate of direct) {
-    if (Array.isArray(candidate)) {
-      return candidate;
+  const visited = new WeakSet<object>();
+  const walk = (value: unknown): unknown[] => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value !== "object") return [];
+    if (visited.has(value as object)) return [];
+    visited.add(value as object);
+    const record = value as Record<string, unknown>;
+    const prioritizedKeys = [
+      "cleansedItems",
+      "items",
+      "data",
+      "payload",
+      "result",
+      "body",
+    ];
+    for (const key of prioritizedKeys) {
+      const candidate = record[key];
+      if (Array.isArray(candidate)) {
+        return candidate;
+      }
+      if (candidate && typeof candidate === "object") {
+        const nested = walk(candidate);
+        if (nested.length) return nested;
+      }
     }
-  }
-  return [];
+    for (const candidate of Object.values(record)) {
+      if (Array.isArray(candidate)) {
+        return candidate;
+      }
+      if (candidate && typeof candidate === "object") {
+        const nested = walk(candidate);
+        if (nested.length) return nested;
+      }
+    }
+    return [];
+  };
+  return walk(input);
 };
 
 export default function ExtractionPage() {
@@ -302,25 +323,48 @@ export default function ExtractionPage() {
       }
 
       const payload = await response.json();
-      const body = payload?.body;
-      const parsedRaw = safeJsonParse(payload?.rawBody);
-      let items = extractCleansedItems(body);
+      const rawBody = typeof payload?.rawBody === "string" ? payload.rawBody : undefined;
+      const plainBody = payload?.body;
+      const normalizedBody =
+        typeof plainBody === "string"
+          ? safeJsonParse(plainBody) ?? {}
+          : plainBody ?? {};
+      const parsedRaw = safeJsonParse(rawBody);
+      let items = extractCleansedItems(normalizedBody);
+      if (!items.length && normalizedBody && typeof normalizedBody === "object") {
+        const innerBody = (normalizedBody as Record<string, unknown>)?.body;
+        if (innerBody) {
+          items = extractCleansedItems(innerBody);
+        }
+      }
       if (!items.length) {
         items = extractCleansedItems(parsedRaw);
       }
+      if (!items.length) {
+        items = extractCleansedItems(payload);
+      }
+      const cleansedId =
+        (normalizedBody?.cleansedDataStoreId as string | undefined) ??
+        context.metadata.cleansedId;
+      const status =
+        (normalizedBody?.status as string | undefined) ?? context.metadata.status;
       setFeedback({
         state: response.ok ? "success" : "error",
         message: response.ok
           ? "Cleansing pipeline triggered."
-          : body?.error ?? payload?.error ?? "Backend rejected the request.",
+          : normalizedBody?.error ?? payload?.error ?? "Backend rejected the request.",
       });
 
       if (response.ok) {
         saveCleansedContext({
-          metadata: context.metadata,
+          metadata: {
+            ...context.metadata,
+            cleansedId,
+            status,
+          },
           items,
-          rawBody: payload?.rawBody ?? (typeof body === "string" ? body : undefined),
-          status: body?.status ?? context.metadata.status,
+          rawBody: rawBody ?? (typeof plainBody === "string" ? plainBody : undefined),
+          status,
         });
         setSending(false);
         router.push("/cleansed");

@@ -14,7 +14,7 @@ import {
   ServerStackIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type UploadTab = "s3" | "local" | "api";
 
@@ -36,11 +36,6 @@ type UploadItem = {
   enrichmentMessage?: string;
 };
 
-type QueuedFile = {
-  id: string;
-  file: File;
-};
-
 type TreeNode = {
   id: string;
   label: string;
@@ -54,13 +49,13 @@ type ApiFeedback = {
   message?: string;
 };
 
-const steps = [
-  { label: "Ingestion", status: "current" as const },
-  { label: "Extraction", status: "upcoming" as const },
-  { label: "Cleansing", status: "upcoming" as const },
-  { label: "Data Enrichment", status: "upcoming" as const },
-  { label: "Content QA", status: "upcoming" as const },
-];
+const pipelineSteps = [
+  "Ingestion",
+  "Extraction",
+  "Cleansing",
+  "Data Enrichment",
+  "Content QA",
+] as const;
 
 const uploadTabs = [
   {
@@ -361,8 +356,25 @@ export default function Home() {
   const [s3Feedback, setS3Feedback] = useState<ApiFeedback>({
     state: "idle",
   });
-  const [queuedLocalFiles, setQueuedLocalFiles] = useState<QueuedFile[]>([]);
-  const [queueSubmitting, setQueueSubmitting] = useState(false);
+  const [pendingLocalFiles, setPendingLocalFiles] = useState<File[]>([]);
+  const [extractFeedback, setExtractFeedback] = useState<ApiFeedback>({
+    state: "idle",
+  });
+  const [extracting, setExtracting] = useState(false);
+  const [stageIndex, setStageIndex] = useState(0);
+  const steps = useMemo(
+    () =>
+      pipelineSteps.map((label, index) => ({
+        label,
+        status:
+          index < stageIndex
+            ? ("complete" as const)
+            : index === stageIndex
+              ? ("current" as const)
+              : ("upcoming" as const),
+      })),
+    [stageIndex],
+  );
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
@@ -389,20 +401,11 @@ export default function Home() {
   const handleFileSelection = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    for (const file of Array.from(files)) {
-      const uploadId = crypto.randomUUID();
-      const newUpload: UploadItem = {
-        id: uploadId,
-        name: file.name,
-        size: file.size,
-        type: file.type || file.name.split(".").pop() || "file",
-        source: "Local",
-        status: "queued",
-        createdAt: Date.now(),
-      };
-      setUploads((previous) => [newUpload, ...previous]);
-      setQueuedLocalFiles((previous) => [...previous, { id: uploadId, file }]);
+    const incoming = Array.from(files);
+    setStageIndex(0);
+    setPendingLocalFiles((previous) => [...previous, ...incoming]);
 
+    for (const file of incoming) {
       if (file.name.toLowerCase().endsWith(".json")) {
         const text = await file.text();
         const parsed = safeJsonParse(text);
@@ -428,91 +431,22 @@ export default function Home() {
     }
   };
 
+  const handleApiPayloadChange = (value: string) => {
+    setStageIndex(0);
+    setApiPayload(value);
+  };
+
+  const handleS3UriChange = (value: string) => {
+    setStageIndex(0);
+    setS3Uri(value);
+  };
+
   const handleDrop = (event: React.DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
     event.stopPropagation();
     handleFileSelection(event.dataTransfer.files);
   };
 
-  const uploadQueuedFile = async ({ id, file }: QueuedFile) => {
-    setUploads((previous) =>
-      previous.map((item) =>
-        item.id === id ? { ...item, status: "uploading" } : item,
-      ),
-    );
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const response = await fetch("/api/ingestion/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = await response.json();
-      const body = payload.body as Record<string, unknown> | string | null;
-      const cleansedId =
-        typeof body === "object" && body !== null
-          ? (body["cleansedDataStoreId"] as string | undefined)
-          : undefined;
-      const backendStatus =
-        typeof body === "object" && body !== null
-          ? (body["status"] as string | undefined)
-          : undefined;
-      const backendMessage =
-        typeof body === "string"
-          ? body
-          : typeof payload.rawBody === "string"
-            ? payload.rawBody
-            : undefined;
-
-      setUploads((previous) =>
-        previous.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                status: response.ok ? "success" : "error",
-                cleansedId: cleansedId ?? item.cleansedId,
-                backendStatus: backendStatus ?? item.backendStatus,
-                backendMessage:
-                  backendMessage ??
-                  (typeof body === "object"
-                    ? JSON.stringify(body)
-                    : item.backendMessage),
-              }
-            : item,
-        ),
-      );
-    } catch (error) {
-      setUploads((previous) =>
-        previous.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                status: "error",
-                backendMessage:
-                  error instanceof Error
-                    ? error.message
-                    : "Upload failed unexpectedly.",
-              }
-            : item,
-        ),
-      );
-    }
-  };
-
-  const sendQueuedFilesToCleansing = async () => {
-    if (!queuedLocalFiles.length || queueSubmitting) return;
-    setQueueSubmitting(true);
-    const snapshot = [...queuedLocalFiles];
-    for (const entry of snapshot) {
-      await uploadQueuedFile(entry);
-      setQueuedLocalFiles((previous) =>
-        previous.filter((item) => item.id !== entry.id),
-      );
-    }
-    setQueueSubmitting(false);
-  };
 
   const toggleNode = (nodeId: string) => {
     setExpandedNodes((previous) => {
@@ -540,9 +474,14 @@ export default function Home() {
     });
   };
 
-  const submitApiPayload = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!apiPayload.trim()) return;
+  const dispatchApiPayload = async () => {
+    if (!apiPayload.trim()) {
+      setApiFeedback({
+        state: "error",
+        message: "Provide a JSON payload before extracting.",
+      });
+      return false;
+    }
 
     const parsed = safeJsonParse(apiPayload);
     if (!parsed) {
@@ -550,7 +489,7 @@ export default function Home() {
         state: "error",
         message: "Payload must be valid JSON before submission.",
       });
-      return;
+      return false;
     }
 
     setApiFeedback({ state: "loading" });
@@ -605,12 +544,13 @@ export default function Home() {
       setApiFeedback({
         state: response.ok ? "success" : "error",
         message: response.ok
-          ? "Payload accepted. Enrichment pipeline triggered."
+          ? "Payload accepted. Extraction kicked off."
           : "Backend rejected the payload.",
       });
       if (response.ok) {
         setApiPayload("");
       }
+      return response.ok;
     } catch (error) {
       setUploads((previous) =>
         previous.map((upload) =>
@@ -628,18 +568,106 @@ export default function Home() {
         state: "error",
         message: "Failed to reach the Spring Boot API.",
       });
+      return false;
     }
   };
 
-  const submitS3Ingestion = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const dispatchLocalFiles = async () => {
+    if (!pendingLocalFiles.length) {
+      setExtractFeedback({
+        state: "error",
+        message: "Select at least one file before extracting.",
+      });
+      return false;
+    }
+
+    for (const file of pendingLocalFiles) {
+      const uploadId = crypto.randomUUID();
+      setUploads((previous) => [
+        {
+          id: uploadId,
+          name: file.name,
+          size: file.size,
+          type: file.type || file.name.split(".").pop() || "file",
+          source: "Local",
+          status: "uploading",
+          createdAt: Date.now(),
+        },
+        ...previous,
+      ]);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const response = await fetch("/api/ingestion/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const payload = await response.json();
+        const body = payload.body as Record<string, unknown> | string | null;
+        const cleansedId =
+          typeof body === "object" && body !== null
+            ? (body["cleansedDataStoreId"] as string | undefined)
+            : undefined;
+        const backendStatus =
+          typeof body === "object" && body !== null
+            ? (body["status"] as string | undefined)
+            : undefined;
+        const backendMessage =
+          typeof body === "string"
+            ? body
+            : typeof payload.rawBody === "string"
+              ? payload.rawBody
+              : undefined;
+
+        setUploads((previous) =>
+          previous.map((item) =>
+            item.id === uploadId
+              ? {
+                  ...item,
+                  status: response.ok ? "success" : "error",
+                  cleansedId: cleansedId ?? item.cleansedId,
+                  backendStatus: backendStatus ?? item.backendStatus,
+                  backendMessage:
+                    backendMessage ??
+                    (typeof body === "object"
+                      ? JSON.stringify(body)
+                      : item.backendMessage),
+                }
+              : item,
+          ),
+        );
+      } catch (error) {
+        setUploads((previous) =>
+          previous.map((item) =>
+            item.id === uploadId
+              ? {
+                  ...item,
+                  status: "error",
+                  backendMessage:
+                    error instanceof Error
+                      ? error.message
+                      : "Upload failed unexpectedly.",
+                }
+              : item,
+          ),
+        );
+      }
+    }
+
+    setPendingLocalFiles([]);
+    return true;
+  };
+
+  const dispatchS3Ingestion = async () => {
     const normalized = s3Uri.trim();
     if (!normalized) {
       setS3Feedback({
         state: "error",
         message: "Provide an s3://bucket/key (or classpath:) URI first.",
       });
-      return;
+      return false;
     }
 
     setS3Feedback({ state: "loading" });
@@ -697,13 +725,14 @@ export default function Home() {
       setS3Feedback({
         state: response.ok ? "success" : "error",
         message: response.ok
-          ? "Source accepted. Enrichment pipeline triggered."
+          ? "Source accepted. Extraction kicked off."
           : "Backend rejected the S3/classpath request.",
       });
 
       if (response.ok) {
         setS3Uri("");
       }
+      return response.ok;
     } catch (error) {
       setUploads((previous) =>
         previous.map((upload) =>
@@ -721,6 +750,7 @@ export default function Home() {
         state: "error",
         message: "Failed to reach the Spring Boot API.",
       });
+      return false;
     }
   };
 
@@ -834,6 +864,51 @@ export default function Home() {
             : item,
         ),
       );
+    }
+  };
+
+  const handleExtractData = async () => {
+    if (extracting) return;
+    setExtractFeedback({ state: "loading" });
+    setExtracting(true);
+    let success = false;
+
+    try {
+      if (activeTab === "local") {
+        success = await dispatchLocalFiles();
+      } else if (activeTab === "api") {
+        success = await dispatchApiPayload();
+      } else {
+        success = await dispatchS3Ingestion();
+      }
+
+      if (success) {
+        setExtractFeedback({
+          state: "success",
+          message: "Extraction request accepted.",
+        });
+        setStageIndex(1);
+      } else {
+        setExtractFeedback((previous) => {
+          if (previous.state !== "loading") {
+            return previous;
+          }
+          return {
+            state: "error",
+            message: "Extraction did not start. Check the active tab inputs.",
+          };
+        });
+      }
+    } catch (error) {
+      setExtractFeedback({
+        state: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Extraction failed unexpectedly.",
+      });
+    } finally {
+      setExtracting(false);
     }
   };
 
@@ -992,101 +1067,50 @@ export default function Home() {
             </div>
 
             {activeTab === "local" && (
-              <>
-                <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-                  <label
-                    htmlFor="file-upload"
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                    onDrop={handleDrop}
-                    className="flex cursor-pointer flex-col items-center gap-4"
-                  >
-                    <ArrowUpTrayIcon className="size-10 text-indigo-500" />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        Drag files here or{" "}
-                        <span className="text-indigo-600 underline">browse</span>
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        JSON, PDF, DOCX or XLS (max 50 MB)
-                      </p>
-                    </div>
-                    <input
-                      id="file-upload"
-                      ref={fileInputRef}
-                      type="file"
-                      className="sr-only"
-                      multiple
-                      accept=".json,.pdf,.doc,.docx,.xls,.xlsx,application/json"
-                      onChange={(event) => handleFileSelection(event.target.files)}
-                    />
-                  </label>
-                </div>
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        Queued files
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Stage files locally, then send them when you&apos;re ready.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={sendQueuedFilesToCleansing}
-                      disabled={
-                        queuedLocalFiles.length === 0 ||
-                        queueSubmitting
-                      }
-                      className={clsx(
-                        "inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black",
-                        (queuedLocalFiles.length === 0 || queueSubmitting) &&
-                          "cursor-not-allowed opacity-60 hover:bg-slate-900",
-                      )}
-                    >
-                      {queueSubmitting ? (
-                        <>
-                          <ArrowPathIcon className="size-4 animate-spin" />
-                          Sending…
-                        </>
-                      ) : (
-                        <>
-                          <CloudArrowUpIcon className="size-4" />
-                          Send to Cleansing
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {queuedLocalFiles.length === 0 ? (
-                      <p className="text-xs text-slate-500">
-                        Drop files above to populate the queue.
-                      </p>
-                    ) : (
-                      queuedLocalFiles.map((entry) => (
-                        <div
-                          key={entry.id}
-                          className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600"
-                        >
-                          <span className="font-semibold text-slate-800">
-                            {entry.file.name}
-                          </span>
-                          <span>{formatBytes(entry.file.size)}</span>
-                        </div>
-                      ))
+              <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                <label
+                  htmlFor="file-upload"
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onDrop={handleDrop}
+                  className="flex cursor-pointer flex-col items-center gap-4"
+                >
+                  <ArrowUpTrayIcon className="size-10 text-indigo-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      Drag files here or{" "}
+                      <span className="text-indigo-600 underline">browse</span>
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      JSON, PDF, DOCX or XLS (max 50 MB)
+                    </p>
+                    {pendingLocalFiles.length > 0 && (
+                      <span className="mt-1 block text-xs text-indigo-600">
+                        {pendingLocalFiles.length} file
+                        {pendingLocalFiles.length > 1 ? "s" : ""} ready for
+                        extraction
+                      </span>
                     )}
                   </div>
-                </div>
-              </>
+                  <input
+                    id="file-upload"
+                    ref={fileInputRef}
+                    type="file"
+                    className="sr-only"
+                    multiple
+                    accept=".json,.pdf,.doc,.docx,.xls,.xlsx,application/json"
+                    onChange={(event) => handleFileSelection(event.target.files)}
+                  />
+                </label>
+              </div>
             )}
 
             {activeTab === "api" && (
               <form
                 className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                onSubmit={submitApiPayload}
+                onSubmit={(event) => event.preventDefault()}
               >
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                   <ServerStackIcon className="size-5 text-indigo-500" />
@@ -1094,26 +1118,23 @@ export default function Home() {
                 </div>
                 <textarea
                   value={apiPayload}
-                  onChange={(event) => setApiPayload(event.target.value)}
+                  onChange={(event) => handleApiPayloadChange(event.target.value)}
                   rows={6}
                   placeholder='Paste JSON payload. Example: { "product": { "name": "Vision Pro" } }'
                   className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-900 shadow-inner focus:border-indigo-500 focus:outline-none"
                 />
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
                   <FeedbackPill feedback={apiFeedback} />
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
-                  >
-                    Send to Cleansing
-                  </button>
+                  <span className="text-xs text-slate-500">
+                    Click <strong>Extract Data</strong> to send this payload.
+                  </span>
                 </div>
               </form>
             )}
             {activeTab === "s3" && (
               <form
                 className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                onSubmit={submitS3Ingestion}
+                onSubmit={(event) => event.preventDefault()}
               >
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                   <CloudArrowUpIcon className="size-5 text-indigo-500" />
@@ -1121,7 +1142,7 @@ export default function Home() {
                 </div>
                 <input
                   value={s3Uri}
-                  onChange={(event) => setS3Uri(event.target.value)}
+                  onChange={(event) => handleS3UriChange(event.target.value)}
                   placeholder="s3://my-bucket/path/to/file.json"
                   className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-900 shadow-inner focus:border-indigo-500 focus:outline-none"
                 />
@@ -1131,12 +1152,9 @@ export default function Home() {
                 </p>
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
                   <FeedbackPill feedback={s3Feedback} />
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
-                  >
-                    Send to Cleansing
-                  </button>
+                  <span className="text-xs text-slate-500">
+                    Click <strong>Extract Data</strong> after entering the URI.
+                  </span>
                 </div>
               </form>
             )}
@@ -1417,10 +1435,25 @@ export default function Home() {
             </div>
             <button
               type="button"
-              className="mt-4 w-full rounded-full bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-black"
+              onClick={handleExtractData}
+              disabled={extracting}
+              className={clsx(
+                "mt-4 w-full rounded-full bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-black",
+                extracting && "cursor-not-allowed opacity-60 hover:bg-slate-900",
+              )}
             >
-              Extract Data
+              {extracting ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <ArrowPathIcon className="size-4 animate-spin" />
+                  Extracting…
+                </span>
+              ) : (
+                "Extract Data"
+              )}
             </button>
+            <div className="mt-3">
+              <FeedbackPill feedback={extractFeedback} />
+            </div>
           </div>
         </section>
       </main>

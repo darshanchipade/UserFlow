@@ -36,6 +36,11 @@ type UploadItem = {
   enrichmentMessage?: string;
 };
 
+type QueuedFile = {
+  id: string;
+  file: File;
+};
+
 type TreeNode = {
   id: string;
   label: string;
@@ -356,6 +361,8 @@ export default function Home() {
   const [s3Feedback, setS3Feedback] = useState<ApiFeedback>({
     state: "idle",
   });
+  const [queuedLocalFiles, setQueuedLocalFiles] = useState<QueuedFile[]>([]);
+  const [queueSubmitting, setQueueSubmitting] = useState(false);
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
@@ -382,7 +389,7 @@ export default function Home() {
   const handleFileSelection = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach(async (file) => {
+    for (const file of Array.from(files)) {
       const uploadId = crypto.randomUUID();
       const newUpload: UploadItem = {
         id: uploadId,
@@ -390,10 +397,11 @@ export default function Home() {
         size: file.size,
         type: file.type || file.name.split(".").pop() || "file",
         source: "Local",
-        status: "uploading",
+        status: "queued",
         createdAt: Date.now(),
       };
       setUploads((previous) => [newUpload, ...previous]);
+      setQueuedLocalFiles((previous) => [...previous, { id: uploadId, file }]);
 
       if (file.name.toLowerCase().endsWith(".json")) {
         const text = await file.text();
@@ -413,72 +421,97 @@ export default function Home() {
           setSelectedNodes(new Set());
         }
       }
+    }
 
-      const formData = new FormData();
-      formData.append("file", file);
-
-      try {
-        const response = await fetch("/api/ingestion/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const payload = await response.json();
-        const body = payload.body as Record<string, unknown> | string | null;
-        const cleansedId =
-          typeof body === "object" && body !== null
-            ? (body["cleansedDataStoreId"] as string | undefined)
-            : undefined;
-        const backendStatus =
-          typeof body === "object" && body !== null
-            ? (body["status"] as string | undefined)
-            : undefined;
-        const backendMessage =
-          typeof body === "string"
-            ? body
-            : typeof payload.rawBody === "string"
-              ? payload.rawBody
-              : undefined;
-
-        setUploads((previous) =>
-          previous.map((item) =>
-            item.id === uploadId
-              ? {
-                  ...item,
-                  status: response.ok ? "success" : "error",
-                  cleansedId: cleansedId ?? item.cleansedId,
-                  backendStatus: backendStatus ?? item.backendStatus,
-                  backendMessage:
-                    backendMessage ??
-                    (typeof body === "object"
-                      ? JSON.stringify(body)
-                      : item.backendMessage),
-                }
-              : item,
-          ),
-        );
-      } catch (error) {
-        setUploads((previous) =>
-          previous.map((item) =>
-            item.id === uploadId
-              ? {
-                  ...item,
-                  status: "error",
-                  backendMessage:
-                    error instanceof Error
-                      ? error.message
-                      : "Upload failed unexpectedly.",
-                }
-              : item,
-          ),
-        );
-      }
-    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleDrop = (event: React.DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
     event.stopPropagation();
     handleFileSelection(event.dataTransfer.files);
+  };
+
+  const uploadQueuedFile = async ({ id, file }: QueuedFile) => {
+    setUploads((previous) =>
+      previous.map((item) =>
+        item.id === id ? { ...item, status: "uploading" } : item,
+      ),
+    );
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("/api/ingestion/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json();
+      const body = payload.body as Record<string, unknown> | string | null;
+      const cleansedId =
+        typeof body === "object" && body !== null
+          ? (body["cleansedDataStoreId"] as string | undefined)
+          : undefined;
+      const backendStatus =
+        typeof body === "object" && body !== null
+          ? (body["status"] as string | undefined)
+          : undefined;
+      const backendMessage =
+        typeof body === "string"
+          ? body
+          : typeof payload.rawBody === "string"
+            ? payload.rawBody
+            : undefined;
+
+      setUploads((previous) =>
+        previous.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                status: response.ok ? "success" : "error",
+                cleansedId: cleansedId ?? item.cleansedId,
+                backendStatus: backendStatus ?? item.backendStatus,
+                backendMessage:
+                  backendMessage ??
+                  (typeof body === "object"
+                    ? JSON.stringify(body)
+                    : item.backendMessage),
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      setUploads((previous) =>
+        previous.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                status: "error",
+                backendMessage:
+                  error instanceof Error
+                    ? error.message
+                    : "Upload failed unexpectedly.",
+              }
+            : item,
+        ),
+      );
+    }
+  };
+
+  const sendQueuedFilesToCleansing = async () => {
+    if (!queuedLocalFiles.length || queueSubmitting) return;
+    setQueueSubmitting(true);
+    const snapshot = [...queuedLocalFiles];
+    for (const entry of snapshot) {
+      await uploadQueuedFile(entry);
+      setQueuedLocalFiles((previous) =>
+        previous.filter((item) => item.id !== entry.id),
+      );
+    }
+    setQueueSubmitting(false);
   };
 
   const toggleNode = (nodeId: string) => {
@@ -959,37 +992,95 @@ export default function Home() {
             </div>
 
             {activeTab === "local" && (
-              <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-                <label
-                  htmlFor="file-upload"
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                  }}
-                  onDrop={handleDrop}
-                  className="flex cursor-pointer flex-col items-center gap-4"
-                >
-                  <ArrowUpTrayIcon className="size-10 text-indigo-500" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      Drag files here or{" "}
-                      <span className="text-indigo-600 underline">browse</span>
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      JSON, PDF, DOCX or XLS (max 50 MB)
-                    </p>
+              <>
+                <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                  <label
+                    htmlFor="file-upload"
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onDrop={handleDrop}
+                    className="flex cursor-pointer flex-col items-center gap-4"
+                  >
+                    <ArrowUpTrayIcon className="size-10 text-indigo-500" />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        Drag files here or{" "}
+                        <span className="text-indigo-600 underline">browse</span>
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        JSON, PDF, DOCX or XLS (max 50 MB)
+                      </p>
+                    </div>
+                    <input
+                      id="file-upload"
+                      ref={fileInputRef}
+                      type="file"
+                      className="sr-only"
+                      multiple
+                      accept=".json,.pdf,.doc,.docx,.xls,.xlsx,application/json"
+                      onChange={(event) => handleFileSelection(event.target.files)}
+                    />
+                  </label>
+                </div>
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        Queued files
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Stage files locally, then send them when you&apos;re ready.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={sendQueuedFilesToCleansing}
+                      disabled={
+                        queuedLocalFiles.length === 0 ||
+                        queueSubmitting
+                      }
+                      className={clsx(
+                        "inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black",
+                        (queuedLocalFiles.length === 0 || queueSubmitting) &&
+                          "cursor-not-allowed opacity-60 hover:bg-slate-900",
+                      )}
+                    >
+                      {queueSubmitting ? (
+                        <>
+                          <ArrowPathIcon className="size-4 animate-spin" />
+                          Sending…
+                        </>
+                      ) : (
+                        <>
+                          <CloudArrowUpIcon className="size-4" />
+                          Send to Cleansing
+                        </>
+                      )}
+                    </button>
                   </div>
-                  <input
-                    id="file-upload"
-                    ref={fileInputRef}
-                    type="file"
-                    className="sr-only"
-                    multiple
-                    accept=".json,.pdf,.doc,.docx,.xls,.xlsx,application/json"
-                    onChange={(event) => handleFileSelection(event.target.files)}
-                  />
-                </label>
-              </div>
+                  <div className="mt-3 space-y-2">
+                    {queuedLocalFiles.length === 0 ? (
+                      <p className="text-xs text-slate-500">
+                        Drop files above to populate the queue.
+                      </p>
+                    ) : (
+                      queuedLocalFiles.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600"
+                        >
+                          <span className="font-semibold text-slate-800">
+                            {entry.file.name}
+                          </span>
+                          <span>{formatBytes(entry.file.size)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
             )}
 
             {activeTab === "api" && (

@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { clearCleansedContext, saveEnrichmentContext } from "@/lib/extraction-context";
+import {
+  clearCleansedContext,
+  loadCleansedContext,
+  saveEnrichmentContext,
+  type CleansedContext,
+} from "@/lib/extraction-context";
 import { PipelineTracker } from "@/components/PipelineTracker";
 
 const RULES = [
@@ -29,24 +34,46 @@ type Feedback = {
   message?: string;
 };
 
-const VALUE_LABEL_KEYS = ["field", "label", "path", "key", "name", "usagePath"];
-const ORIGINAL_VALUE_KEYS = [
-  "originalValue",
-  "rawValue",
-  "sourceValue",
-  "before",
-  "input",
-  "valueBefore",
-];
-const CLEANSED_VALUE_KEYS = [
-  "cleansedValue",
-  "cleanedValue",
-  "normalizedValue",
-  "after",
-  "output",
-  "valueAfter",
-  "value",
-];
+type RemoteCleansedContext = {
+  metadata: CleansedContext["metadata"];
+  status?: string;
+  items?: unknown[];
+  rawBody?: string;
+  fallbackReason?: string;
+};
+
+const mapLocalContext = (local: CleansedContext | null): RemoteCleansedContext | null => {
+  if (!local) return null;
+  return {
+    metadata: local.metadata,
+    status: local.status,
+    items: local.items,
+    rawBody: local.rawBody,
+    fallbackReason: local.fallbackReason,
+  };
+};
+
+const deriveItems = (items?: unknown[], rawBody?: string): unknown[] => {
+  if (Array.isArray(items) && items.length) {
+    return items;
+  }
+  if (typeof rawBody === "string" && rawBody.trim()) {
+    try {
+      const parsed = JSON.parse(rawBody);
+      if (Array.isArray(parsed)) return parsed;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as Record<string, unknown>).items)
+      ) {
+        return (parsed as Record<string, unknown>).items as unknown[];
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+  return [];
+};
 
 const getFirstValue = (payload: Record<string, unknown>, keys: string[]) => {
   for (const key of keys) {
@@ -70,6 +97,25 @@ const formatValue = (value: unknown) => {
   return JSON.stringify(value, null, 2);
 };
 
+const VALUE_LABEL_KEYS = ["field", "label", "path", "key", "name", "usagePath"];
+const ORIGINAL_VALUE_KEYS = [
+  "originalValue",
+  "rawValue",
+  "sourceValue",
+  "before",
+  "input",
+  "valueBefore",
+];
+const CLEANSED_VALUE_KEYS = [
+  "cleansedValue",
+  "cleanedValue",
+  "normalizedValue",
+  "after",
+  "output",
+  "valueAfter",
+  "value",
+];
+
 const FeedbackPill = ({ feedback }: { feedback: Feedback }) => {
   if (feedback.state === "idle") return null;
   const base =
@@ -88,98 +134,113 @@ const FeedbackPill = ({ feedback }: { feedback: Feedback }) => {
   );
 };
 
-type RemoteCleansedContext = {
-  metadata: {
-    name: string;
-    size: number;
-    source: string;
-    cleansedId?: string;
-    status?: string;
-    uploadedAt: number;
-  };
-  status?: string;
-  items?: unknown[];
-  rawBody?: string;
-  fallbackReason?: string;
-};
-
 export default function CleansingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const cleansedIdFromQuery = searchParams.get("id");
-  const [context, setContext] = useState<RemoteCleansedContext | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryId = searchParams.get("id");
+  const localSnapshot = mapLocalContext(loadCleansedContext());
+
+  const [context, setContext] = useState<RemoteCleansedContext | null>(localSnapshot);
+  const [items, setItems] = useState<unknown[]>(deriveItems(localSnapshot?.items, localSnapshot?.rawBody));
+  const [loading, setLoading] = useState<boolean>(!localSnapshot);
   const [error, setError] = useState<string | null>(null);
-  const [enrichmentFeedback, setEnrichmentFeedback] = useState<Feedback>({
-    state: "idle",
-  });
+  const [enrichmentFeedback, setEnrichmentFeedback] = useState<Feedback>({ state: "idle" });
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(
+    queryId ?? localSnapshot?.metadata.cleansedId ?? null,
+  );
 
-  const loadContext = async (id: string) => {
-    setLoading(true);
-    setError(null);
+  useEffect(() => {
+    const fallbackId = localSnapshot?.metadata.cleansedId ?? null;
+    setActiveId(queryId ?? fallbackId);
+  }, [queryId, localSnapshot?.metadata.cleansedId]);
+
+  const fetchItems = async (id: string) => {
+    setItemsLoading(true);
+    setItemsError(null);
     try {
-      const response = await fetch(`/api/ingestion/cleansed-context?id=${encodeURIComponent(id)}`);
+      const response = await fetch(`/api/ingestion/cleansed-items?id=${encodeURIComponent(id)}`);
       const payload = await response.json();
       if (!response.ok) {
-        setError(payload?.error ?? "Backend rejected the cleansed context request.");
-        setContext(null);
-        return;
+        throw new Error(payload?.error ?? "Backend rejected the items request.");
       }
-      const body = payload?.body ?? payload;
-      setContext({
-        metadata: body?.metadata ?? {
-          name: "unknown",
-          size: 0,
-          source: "unknown",
-          uploadedAt: Date.now(),
-        },
-        status: body?.status,
-        items: body?.items,
-        rawBody: body?.rawBody,
-        fallbackReason: body?.fallbackReason,
-      });
-    } catch (contextError) {
-      setError(
-        contextError instanceof Error ? contextError.message : "Unable to load cleansed context.",
+      const normalized = Array.isArray(payload?.items) ? payload.items : [];
+      setItems(normalized);
+      setContext((previous) =>
+        previous
+          ? {
+              ...previous,
+              items: normalized,
+              rawBody: typeof payload?.rawBody === "string" ? payload.rawBody : previous.rawBody,
+            }
+          : previous,
       );
-      setContext(null);
+    } catch (itemsErr) {
+      setItemsError(itemsErr instanceof Error ? itemsErr.message : "Unable to fetch cleansed items.");
     } finally {
-      setLoading(false);
+      setItemsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (cleansedIdFromQuery) {
-      loadContext(cleansedIdFromQuery);
-    }
-  }, [cleansedIdFromQuery]);
-
-  const itemsPreview = useMemo(() => {
-    if (!context) return [];
-    if (Array.isArray(context.items) && context.items.length > 0) {
-      return context.items.slice(0, 10);
-    }
-    if (typeof context.rawBody === "string" && context.rawBody.trim()) {
-      try {
-        const parsed = JSON.parse(context.rawBody);
-        if (Array.isArray(parsed)) {
-          return parsed.slice(0, 10);
-        }
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          Array.isArray((parsed as Record<string, unknown>).items)
-        ) {
-          return ((parsed as Record<string, unknown>).items as unknown[]).slice(0, 10);
-        }
-      } catch {
-        // ignore parse errors
+    const fetchContext = async (id: string | null) => {
+      if (!id) {
+        setLoading(false);
+        setError("Provide a cleansed ID via the URL or trigger a new run.");
+        setContext(localSnapshot);
+        setItems(deriveItems(localSnapshot?.items, localSnapshot?.rawBody));
+        return;
       }
-    }
-    return [];
-  }, [context]);
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/ingestion/cleansed-context?id=${encodeURIComponent(id)}`);
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Backend rejected the cleansed context request.");
+        }
+        const body = payload?.body ?? payload;
+        const remoteContext: RemoteCleansedContext = {
+          metadata: body?.metadata ?? localSnapshot?.metadata ?? {
+            name: "Unknown dataset",
+            size: 0,
+            source: "unknown",
+            uploadedAt: Date.now(),
+            cleansedId: id,
+          },
+          status: body?.status,
+          items: Array.isArray(body?.items) ? body.items : undefined,
+          rawBody: typeof body?.rawBody === "string" ? body.rawBody : undefined,
+          fallbackReason: body?.fallbackReason,
+        };
+        setContext(remoteContext);
+        const derived = deriveItems(remoteContext.items, remoteContext.rawBody);
+        setItems(derived);
+        if (!derived.length) {
+          await fetchItems(id);
+        }
+      } catch (contextError) {
+        setError(
+          contextError instanceof Error ? contextError.message : "Unable to load cleansed context.",
+        );
+        if (localSnapshot) {
+          setContext(localSnapshot);
+          setItems(deriveItems(localSnapshot.items, localSnapshot.rawBody));
+        } else {
+          setContext(null);
+          setItems([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchContext(activeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  const itemsPreview = useMemo(() => items.slice(0, 10), [items]);
 
   const previewRows = useMemo(() => {
     return itemsPreview.map((item, index) => {
@@ -252,7 +313,7 @@ export default function CleansingPage() {
         state: "success",
         message: "Enrichment pipeline triggered.",
       });
-      router.push("/enrichment");
+      router.push(`/enrichment?id=${encodeURIComponent(context.metadata.cleansedId)}`);
     } catch (error) {
       setEnrichmentFeedback({
         state: "error",
@@ -261,46 +322,6 @@ export default function CleansingPage() {
       });
     }
   };
-
-  const fetchItems = async () => {
-    if (!context?.metadata.cleansedId) return;
-    setItemsLoading(true);
-    setItemsError(null);
-    try {
-      const response = await fetch(
-        `/api/ingestion/cleansed-items?id=${encodeURIComponent(
-          context.metadata.cleansedId,
-        )}`,
-      );
-      const payload = await response.json();
-      if (!response.ok) {
-        setItemsError(payload?.error ?? "Backend rejected the items request.");
-        return;
-      }
-      const items = Array.isArray(payload?.items) ? payload.items : [];
-      setContext((previous) =>
-        previous
-          ? {
-              ...previous,
-              items,
-              rawBody: payload?.rawBody,
-            }
-          : previous,
-      );
-    } catch (error) {
-      setItemsError(
-        error instanceof Error ? error.message : "Unable to fetch cleansed items.",
-      );
-    } finally {
-      setItemsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (context?.metadata.cleansedId && (!context.items || context.items.length === 0)) {
-      fetchItems();
-    }
-  }, [context?.metadata.cleansedId]);
 
   if (loading) {
     return (
@@ -402,7 +423,7 @@ export default function CleansingPage() {
                 Original vs Cleansed values
               </h2>
             </div>
-            {context.itemsTruncated && (
+            {context.items?.length && context.items.length > 10 && (
               <span className="text-xs font-semibold text-amber-600">
                 Showing first {previewRows.length} items
               </span>
@@ -419,7 +440,7 @@ export default function CleansingPage() {
               <p className="mt-1">{itemsError}</p>
               <button
                 type="button"
-                onClick={fetchItems}
+                onClick={() => context.metadata.cleansedId && fetchItems(context.metadata.cleansedId)}
                 className="mt-3 rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
               >
                 Retry fetch

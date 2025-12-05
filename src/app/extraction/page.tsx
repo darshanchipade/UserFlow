@@ -21,6 +21,8 @@ import {
   ExtractionContext,
   clearExtractionContext,
   loadExtractionContext,
+  saveCleansedContext,
+  type PersistenceResult,
 } from "@/lib/extraction-context";
 
 const formatBytes = (bytes: number) => {
@@ -106,6 +108,66 @@ const flattenTree = (nodes: TreeNode[]) => {
   };
   nodes.forEach(traverse);
   return map;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null;
+};
+
+const extractItemsFromBackend = (payload: unknown): unknown[] => {
+  if (Array.isArray(payload)) return payload;
+  if (isRecord(payload)) {
+    const candidates = [
+      payload.items,
+      payload.records,
+      payload.data,
+      payload.payload,
+    ];
+
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return [];
+};
+
+const extractStatusFromBackend = (payload: unknown): string | undefined => {
+  if (!isRecord(payload)) return undefined;
+  const candidates = [
+    payload.status,
+    payload.state,
+    payload.currentStatus,
+    payload.pipelineStatus,
+  ];
+  return candidates.find((value) => typeof value === "string") as string | undefined;
+};
+
+const buildCleansedContextPayload = (
+  metadata: ExtractionContext["metadata"],
+  backendResponse: any,
+) => {
+  const body = backendResponse?.body ?? backendResponse;
+  return {
+    metadata,
+    items: extractItemsFromBackend(body),
+    rawBody: typeof backendResponse?.rawBody === "string" ? backendResponse.rawBody : undefined,
+    status: extractStatusFromBackend(body) ?? extractStatusFromBackend(backendResponse),
+  };
+};
+
+const composeSuccessMessage = (storageResult?: PersistenceResult) => {
+  if (!storageResult) {
+    return "Cleansing pipeline triggered.";
+  }
+  if (!storageResult.ok) {
+    return "Cleansing pipeline triggered, but preview caching failed.";
+  }
+  if (storageResult.usedFallback) {
+    return "Cleansing pipeline triggered. Preview cached partially because the payload is large.";
+  }
+  return "Cleansing pipeline triggered.";
 };
 
 export default function ExtractionPage() {
@@ -237,12 +299,26 @@ export default function ExtractionPage() {
         throw new Error("No payload available to send to cleansing.");
       }
 
-      const body = await response.json();
+      const payload = await response.json();
+      let storageResult: PersistenceResult | undefined;
+
+      if (response.ok) {
+        storageResult = saveCleansedContext(
+          buildCleansedContextPayload(context.metadata, payload),
+        );
+        if (!storageResult.ok) {
+          console.warn(
+            "Unable to cache cleansed response locally; continuing without snapshot.",
+            storageResult.reason,
+          );
+        }
+      }
+
       setFeedback({
         state: response.ok ? "success" : "error",
         message: response.ok
-          ? "Cleansing pipeline triggered."
-          : body?.error ?? "Backend rejected the request.",
+          ? composeSuccessMessage(storageResult)
+          : payload?.error ?? "Backend rejected the request.",
       });
     } catch (error) {
       setFeedback({

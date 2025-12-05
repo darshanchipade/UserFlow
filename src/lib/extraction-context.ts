@@ -47,6 +47,8 @@ const isQuotaExceededError = (error: unknown): error is DOMException => {
   );
 };
 
+const MAX_EXTRACTION_RAW_BODY_CHARS = 500_000;
+
 const persistToSessionStorage = (key: string, payload: unknown): PersistenceResult => {
   if (typeof window === "undefined") {
     return { ok: false, reason: "ssr" };
@@ -77,8 +79,22 @@ const safeLoad = <T>(serialized: string | null): T | null => {
   }
 };
 
+const sanitizeExtractionContext = (payload: ExtractionContext): ExtractionContext => {
+  const next: ExtractionContext = {
+    ...payload,
+    backendPayload: undefined,
+  };
+
+  if (typeof next.rawJson === "string" && next.rawJson.length > MAX_EXTRACTION_RAW_BODY_CHARS) {
+    next.rawJson = next.rawJson.slice(0, MAX_EXTRACTION_RAW_BODY_CHARS);
+  }
+
+  return next;
+};
+
 export const saveExtractionContext = (payload: ExtractionContext) => {
-  return persistToSessionStorage(STORAGE_KEY, payload);
+  const sanitized = sanitizeExtractionContext(payload);
+  return persistToSessionStorage(STORAGE_KEY, sanitized);
 };
 
 export const loadExtractionContext = (): ExtractionContext | null => {

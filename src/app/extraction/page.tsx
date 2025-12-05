@@ -25,6 +25,7 @@ import {
   type PersistenceResult,
 } from "@/lib/extraction-context";
 import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
+import { readClientSnapshot } from "@/lib/client/snapshot-store";
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes)) return "—";
@@ -265,21 +266,30 @@ export default function ExtractionPage() {
       setSnapshotLoading(true);
       setSnapshotError(null);
       try {
-        const response = await fetch(
-          `/api/ingestion/context?id=${encodeURIComponent(snapshotId)}`,
-        );
-        let body: any = null;
-        try {
-          body = await response.json();
-        } catch {
-          // ignore parse errors
-        }
-        if (!response.ok) {
-          throw new Error(body?.error ?? "Failed to load extraction snapshot.");
+        let snapshotPayload: ExtractionSnapshot | null = null;
+        if (snapshotId.startsWith("local:")) {
+          snapshotPayload = await readClientSnapshot(snapshotId);
+          if (!snapshotPayload) {
+            throw new Error("Local extraction snapshot not found.");
+          }
+        } else {
+          const response = await fetch(
+            `/api/ingestion/context?id=${encodeURIComponent(snapshotId)}`,
+          );
+          let body: any = null;
+          try {
+            body = await response.json();
+          } catch {
+            // ignore parse errors
+          }
+          if (!response.ok) {
+            throw new Error(body?.error ?? "Failed to load extraction snapshot.");
+          }
+          snapshotPayload = body as ExtractionSnapshot;
         }
         if (cancelled) return;
-        setSnapshot(body as ExtractionSnapshot);
-        hydrateStructure(body?.tree, body?.rawJson);
+        setSnapshot(snapshotPayload);
+        hydrateStructure(snapshotPayload?.tree, snapshotPayload?.rawJson);
         setSnapshotLoading(false);
       } catch (error) {
         if (cancelled) return;

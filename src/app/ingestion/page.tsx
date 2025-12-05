@@ -27,6 +27,8 @@ import {
   type ExtractionContext,
   type PersistenceResult,
 } from "@/lib/extraction-context";
+import { storeClientSnapshot } from "@/lib/client/snapshot-store";
+import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
 
 type UploadTab = "local" | "api" | "s3";
 
@@ -378,6 +380,7 @@ export default function IngestionPage() {
     };
     const snapshotId = details.cleansedId ?? uploadId;
     let snapshotPersisted = false;
+    let resolvedSnapshotId: string | undefined;
 
     if (snapshotId) {
       const result = await persistSnapshot(snapshotId, {
@@ -388,15 +391,19 @@ export default function IngestionPage() {
         backendPayload: payload,
       });
       snapshotPersisted = result.ok;
+      resolvedSnapshotId = result.snapshotId;
       if (!result.ok) {
-        console.warn("Unable to cache extraction snapshot, falling back to session storage.", result.message);
+        console.warn(
+          "Unable to cache extraction snapshot, falling back to session storage.",
+          result.message,
+        );
       }
     }
 
     const persistenceResult = saveExtractionContext({
       mode: "local",
       metadata,
-      snapshotId: snapshotPersisted ? snapshotId : undefined,
+      snapshotId: snapshotPersisted ? resolvedSnapshotId ?? snapshotId : undefined,
       tree: snapshotPersisted ? undefined : treeNodes,
       rawJson: snapshotPersisted ? undefined : localFileText ?? undefined,
       backendPayload: snapshotPersisted ? undefined : payload,
@@ -507,6 +514,7 @@ export default function IngestionPage() {
     const serializedPayload = JSON.stringify(parsed, null, 2);
 
     let snapshotPersisted = false;
+    let resolvedSnapshotId: string | undefined;
     if (snapshotId) {
       const snapshotResult = await persistSnapshot(snapshotId, {
         mode: "api",
@@ -516,6 +524,7 @@ export default function IngestionPage() {
         backendPayload: payload,
       });
       snapshotPersisted = snapshotResult.ok;
+      resolvedSnapshotId = snapshotResult.snapshotId;
       if (!snapshotResult.ok) {
         console.warn(
           "Unable to cache API extraction snapshot, falling back to browser session storage.",
@@ -527,7 +536,7 @@ export default function IngestionPage() {
     const persistenceResult = saveExtractionContext({
       mode: "api",
       metadata,
-      snapshotId: snapshotPersisted ? snapshotId : undefined,
+      snapshotId: snapshotPersisted ? resolvedSnapshotId ?? snapshotId : undefined,
       tree: snapshotPersisted ? undefined : previewNodes,
       rawJson: snapshotPersisted ? undefined : serializedPayload,
       backendPayload: snapshotPersisted ? undefined : payload,
@@ -627,6 +636,7 @@ export default function IngestionPage() {
     const snapshotId = details.cleansedId ?? uploadId;
 
     let snapshotPersisted = false;
+    let resolvedSnapshotId: string | undefined;
     if (snapshotId) {
       const snapshotResult = await persistSnapshot(snapshotId, {
         mode: "s3",
@@ -635,6 +645,7 @@ export default function IngestionPage() {
         backendPayload: payload,
       });
       snapshotPersisted = snapshotResult.ok;
+      resolvedSnapshotId = snapshotResult.snapshotId;
       if (!snapshotResult.ok) {
         console.warn(
           "Unable to cache S3 extraction snapshot, falling back to session storage metadata only.",
@@ -647,7 +658,7 @@ export default function IngestionPage() {
       mode: "s3",
       metadata,
       sourceUri: normalized,
-      snapshotId: snapshotPersisted ? snapshotId : undefined,
+      snapshotId: snapshotPersisted ? resolvedSnapshotId ?? snapshotId : undefined,
       backendPayload: snapshotPersisted ? undefined : payload,
     });
 
@@ -710,19 +721,21 @@ export default function IngestionPage() {
     return { cleansedId, status, message };
   };
 
-  type SnapshotPayload = {
-    mode: UploadTab;
-    metadata: ExtractionContext["metadata"];
-    rawJson?: string;
-    tree?: TreeNode[];
-    sourceUri?: string;
-    backendPayload?: unknown;
-  };
+  type SnapshotPayload = Omit<ExtractionSnapshot, "storedAt">;
 
   const persistSnapshot = async (
     id: string,
     payload: SnapshotPayload,
-  ): Promise<{ ok: boolean; message?: string }> => {
+  ): Promise<{ ok: boolean; snapshotId?: string; message?: string }> => {
+    if (!id) {
+      return { ok: false, message: "Snapshot id is missing." };
+    }
+
+    const snapshotPayload: ExtractionSnapshot = {
+      ...payload,
+      storedAt: Date.now(),
+    };
+
     try {
       const response = await fetch("/api/ingestion/context", {
         method: "POST",
@@ -749,15 +762,22 @@ export default function IngestionPage() {
         } catch {
           // ignore
         }
-        return { ok: false, message };
+        throw new Error(message);
       }
 
-      return { ok: true };
+      return { ok: true, snapshotId: id };
     } catch (error) {
+      const localId = `local:${id}`;
+      const localResult = await storeClientSnapshot(localId, snapshotPayload);
+      if (localResult.ok) {
+        return { ok: true, snapshotId: localId };
+      }
+
       return {
         ok: false,
         message:
-          error instanceof Error ? error.message : "Failed to cache extraction snapshot.",
+          localResult.message ??
+          (error instanceof Error ? error.message : "Failed to cache extraction snapshot."),
       };
     }
   };

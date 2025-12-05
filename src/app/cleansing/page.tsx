@@ -35,12 +35,19 @@ type Feedback = {
   message?: string;
 };
 
+type PreviewRow = {
+  id: string;
+  field: string;
+  original?: string | null;
+  cleansed?: string | null;
+};
+
 type RemoteCleansedContext = {
   metadata: CleansedContext["metadata"];
   status?: string;
-  items?: unknown[];
   rawBody?: string;
   fallbackReason?: string;
+  cachedItems?: PreviewRow[];
 };
 
 const mapLocalContext = (local: CleansedContext | null): RemoteCleansedContext | null => {
@@ -48,10 +55,32 @@ const mapLocalContext = (local: CleansedContext | null): RemoteCleansedContext |
   return {
     metadata: local.metadata,
     status: local.status,
-    items: local.items,
     rawBody: local.rawBody,
     fallbackReason: local.fallbackReason,
+    cachedItems: normalizeStoredItems(local.items),
   };
+};
+
+const normalizeStoredItems = (items?: unknown[]): PreviewRow[] => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, index) => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const field = pickString(record.field);
+      const original = pickString(record.original);
+      const cleansed = pickString(record.cleansed);
+      if (!field && !original && !cleansed) {
+        return null;
+      }
+      return {
+        id: pickString(record.id) ?? `cached-${index}`,
+        field: field ?? `Item ${index + 1}`,
+        original: original ?? null,
+        cleansed: cleansed ?? null,
+      };
+    })
+    .filter((row): row is PreviewRow => Boolean(row));
 };
 
 const parseJson = async (response: Response) => {
@@ -72,178 +101,6 @@ const parseJson = async (response: Response) => {
       : rawBody;
   return { body, rawBody: friendlyRaw };
 };
-
-const deriveItems = (items?: unknown[], rawBody?: string): unknown[] => {
-  if (Array.isArray(items) && items.length) {
-    return items;
-  }
-
-  if (typeof rawBody === "string" && rawBody.trim()) {
-    try {
-      const parsed = JSON.parse(rawBody);
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed && typeof parsed === "object") {
-        const source = parsed as Record<string, unknown>;
-        const candidateKeys = [
-          "items",
-          "records",
-          "data",
-          "payload",
-          "cleansedItems",
-          "originalItems",
-          "result",
-          "body",
-        ];
-        const pickArray = (record: Record<string, unknown>): unknown[] => {
-          for (const key of candidateKeys) {
-            const candidate = record[key];
-            if (Array.isArray(candidate)) {
-              return candidate as unknown[];
-            }
-            if (candidate && typeof candidate === "object") {
-              const nested = candidate as Record<string, unknown>;
-              if (Array.isArray(nested.items)) {
-                return nested.items as unknown[];
-              }
-            }
-          }
-          return [];
-        };
-        const derived = pickArray(source);
-        if (derived.length) {
-          return derived;
-        }
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }
-
-  return [];
-};
-
-const getFirstValue = (payload: Record<string, unknown>, keys: string[]) => {
-  for (const key of keys) {
-    const value = payload[key];
-    if (
-      value !== undefined &&
-      value !== null &&
-      !(typeof value === "string" && value.trim().length === 0)
-    ) {
-      return value;
-    }
-  }
-  return undefined;
-};
-
-const formatValue = (value: unknown) => {
-  if (value === undefined) return "—";
-  if (value === null) return "null";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return JSON.stringify(value, null, 2);
-};
-
-const isDisplayable = (value: unknown) => {
-  if (value === undefined || value === null) return false;
-  if (typeof value === "string") return value.trim().length > 0;
-  if (typeof value === "number" || typeof value === "boolean") return true;
-  return false;
-};
-
-const extractStringKey = (value?: string | null) => {
-  if (!value) return undefined;
-  return value
-    .replace(/^.*::ref::/, "")
-    .split(".")
-    .pop()
-    ?.replace(/\[[0-9]+\]/g, "")
-    .trim();
-};
-
-const pickValueFromPayload = (
-  payload: Record<string, unknown>,
-  preferredKeys: string[],
-  explicitKey?: string | null,
-): unknown => {
-  const normalizedKey = extractStringKey(explicitKey);
-  const searchKeys = [
-    normalizedKey,
-    ...preferredKeys,
-    ...FALLBACK_VALUE_KEYS,
-  ].filter((key): key is string => Boolean(key));
-
-  const candidateSources: Array<Record<string, unknown>> = [payload];
-  if (payload.context && typeof payload.context === "object") {
-    candidateSources.push(payload.context as Record<string, unknown>);
-    const facets = (payload.context as Record<string, unknown>).facets;
-    if (facets && typeof facets === "object") {
-      candidateSources.push(facets as Record<string, unknown>);
-    }
-  }
-  if (payload.facets && typeof payload.facets === "object") {
-    candidateSources.push(payload.facets as Record<string, unknown>);
-  }
-
-  for (const source of candidateSources) {
-    for (const key of searchKeys) {
-      const candidate = source[key];
-      if (
-        isDisplayable(candidate) &&
-        !(typeof candidate === "string" && candidate.trim() === key.trim())
-      ) {
-        return candidate;
-      }
-    }
-  }
-
-  return undefined;
-};
-
-const normalizeLabel = (rawLabel: string | undefined, fallback: string): string => {
-  if (!rawLabel) return fallback;
-  const withoutRef = rawLabel.split("::ref::").pop()?.trim() ?? rawLabel;
-  const cleaned = withoutRef.replace(/\s+/g, " ").trim();
-  const segments = cleaned.split(/[./]/).filter(Boolean);
-  const candidate = segments[segments.length - 1] ?? cleaned;
-  const withoutIndex = candidate.replace(/\[[0-9]+\]/g, "");
-  return withoutIndex || fallback;
-};
-
-const VALUE_LABEL_KEYS = [
-  "originalFieldName",
-  "fieldName",
-  "field",
-  "label",
-  "key",
-  "name",
-  "itemType",
-];
-const ORIGINAL_VALUE_KEYS = [
-  "originalValue",
-  "rawValue",
-  "sourceValue",
-  "before",
-  "input",
-  "valueBefore",
-  "value",
-  "copy",
-  "text",
-  "content",
-];
-const CLEANSED_VALUE_KEYS = [
-  "cleansedValue",
-  "cleanedValue",
-  "normalizedValue",
-  "after",
-  "output",
-  "valueAfter",
-  "value",
-  "cleansedCopy",
-  "cleansedContent",
-  "text",
-];
-const FALLBACK_VALUE_KEYS = ["copy", "text", "value", "content", "body", "stringValue"];
 
 const pickNumber = (value: unknown) => {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -346,7 +203,7 @@ export default function CleansingPage() {
   const localSnapshot = mapLocalContext(loadCleansedContext());
 
   const [context, setContext] = useState<RemoteCleansedContext | null>(localSnapshot);
-  const [items, setItems] = useState<unknown[]>(deriveItems(localSnapshot?.items, localSnapshot?.rawBody));
+  const [items, setItems] = useState<PreviewRow[]>(localSnapshot?.cachedItems ?? []);
   const [loading, setLoading] = useState<boolean>(!localSnapshot);
   const [error, setError] = useState<string | null>(null);
   const [enrichmentFeedback, setEnrichmentFeedback] = useState<Feedback>({ state: "idle" });
@@ -386,37 +243,15 @@ export default function CleansingPage() {
         );
       }
       const payloadRecord = (body as Record<string, unknown>) ?? {};
-      const candidateKeys = [
-        "items",
-        "records",
-        "data",
-        "payload",
-        "cleansedItems",
-        "result",
-        "body",
-      ];
-      const pickArrayFromRecord = (record: Record<string, unknown>): unknown[] => {
-        for (const key of candidateKeys) {
-          const candidate = record[key];
-          if (Array.isArray(candidate)) {
-            return candidate as unknown[];
-          }
-          if (candidate && typeof candidate === "object" && Array.isArray((candidate as any).items)) {
-            return (candidate as any).items as unknown[];
-          }
-        }
-        return [];
-      };
-      let normalized = pickArrayFromRecord(payloadRecord);
-      if (!normalized.length && typeof payloadRecord.body === "object" && payloadRecord.body) {
-        normalized = pickArrayFromRecord(payloadRecord.body as Record<string, unknown>);
-      }
+      const normalized = Array.isArray(payloadRecord.items)
+        ? (payloadRecord.items as PreviewRow[])
+        : [];
       setItems(normalized);
       setContext((previous) =>
         previous
           ? {
               ...previous,
-              items: normalized,
+              cachedItems: normalized,
               rawBody:
                 typeof (body as Record<string, unknown>)?.rawBody === "string"
                   ? ((body as Record<string, unknown>).rawBody as string)
@@ -439,7 +274,7 @@ export default function CleansingPage() {
         setLoading(false);
         setError("Provide a cleansed ID via the URL or trigger a new run.");
         setContext(localSnapshot);
-        setItems(deriveItems(localSnapshot?.items, localSnapshot?.rawBody));
+        setItems(localSnapshot?.cachedItems ?? []);
         return;
       }
       setLoading(true);
@@ -468,9 +303,6 @@ export default function CleansingPage() {
         const remoteContext: RemoteCleansedContext = {
           metadata: remoteMetadata,
           status: pickString(backendRecord?.status) ?? localSnapshot?.status,
-          items: Array.isArray(backendRecord?.items)
-            ? (backendRecord?.items as unknown[])
-            : undefined,
           rawBody: proxiedRawBody,
           fallbackReason:
             pickString(proxyPayload.fallbackReason) ??
@@ -478,16 +310,17 @@ export default function CleansingPage() {
             localSnapshot?.fallbackReason,
         };
         setContext(remoteContext);
-        const derived = deriveItems(remoteContext.items, remoteContext.rawBody);
-        setItems(derived);
-        await fetchItems(id, { showSpinner: derived.length === 0 });
+        if (remoteContext.cachedItems?.length) {
+          setItems(remoteContext.cachedItems);
+        }
+        await fetchItems(id, { showSpinner: !(remoteContext.cachedItems?.length) });
       } catch (contextError) {
         setError(
           contextError instanceof Error ? contextError.message : "Unable to load cleansed context.",
         );
         if (localSnapshot) {
           setContext(localSnapshot);
-          setItems(deriveItems(localSnapshot.items, localSnapshot.rawBody));
+          setItems(localSnapshot.cachedItems ?? []);
         } else {
           setContext(null);
           setItems([]);
@@ -500,47 +333,6 @@ export default function CleansingPage() {
     fetchContext(activeId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
-
-  const previewRows = useMemo(() => {
-    return items.map((item, index) => {
-      if (typeof item === "object" && item !== null) {
-        const payload = item as Record<string, unknown>;
-        const rawLabel =
-          (payload.originalFieldName as string | undefined) ??
-          (payload.fieldName as string | undefined) ??
-          (payload.field as string | undefined) ??
-          (payload.label as string | undefined) ??
-          (payload.itemType as string | undefined);
-        const derivedLabel = normalizeLabel(rawLabel, `Item ${index + 1}`);
-        const originalCandidate =
-          pickValueFromPayload(payload, ORIGINAL_VALUE_KEYS, rawLabel) ??
-          pickValueFromPayload(
-            (payload.context as Record<string, unknown>) ?? {},
-            ORIGINAL_VALUE_KEYS,
-            rawLabel,
-          );
-        const cleansedCandidate =
-          pickValueFromPayload(payload, CLEANSED_VALUE_KEYS, rawLabel) ??
-          pickValueFromPayload(
-            (payload.context as Record<string, unknown>) ?? {},
-            CLEANSED_VALUE_KEYS,
-            rawLabel,
-          );
-        return {
-          id: payload.id ?? `${derivedLabel}-${index}`,
-          label: derivedLabel,
-          original: formatValue(originalCandidate),
-          cleansed: formatValue(cleansedCandidate),
-        };
-      }
-      return {
-        id: `item-${index}`,
-        label: `Item ${index + 1}`,
-        original: formatValue(item),
-        cleansed: formatValue(item),
-      };
-    });
-  }, [items]);
 
   const handleSendToEnrichment = async () => {
     if (!context?.metadata.cleansedId) {
@@ -728,7 +520,7 @@ export default function CleansingPage() {
                 Retry fetch
               </button>
             </div>
-          ) : previewRows.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
               No cleansed items available yet.
             </div>
@@ -744,16 +536,20 @@ export default function CleansingPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {previewRows.map((row) => (
+                  {items.map((row) => (
                     <tr key={row.id}>
                       <td className="px-4 py-3 align-top font-semibold text-slate-900">
-                        {row.label}
+                        {row.field}
                       </td>
                       <td className="px-4 py-3 align-top text-slate-700">
-                        <pre className="whitespace-pre-wrap text-xs">{row.original}</pre>
+                        <pre className="whitespace-pre-wrap text-xs">
+                          {row.original ?? "—"}
+                        </pre>
                       </td>
                       <td className="px-4 py-3 align-top text-slate-700">
-                        <pre className="whitespace-pre-wrap text-xs">{row.cleansed}</pre>
+                        <pre className="whitespace-pre-wrap text-xs">
+                          {row.cleansed ?? "—"}
+                        </pre>
                       </td>
                     </tr>
                   ))}

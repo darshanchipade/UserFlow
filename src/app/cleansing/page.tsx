@@ -488,10 +488,8 @@ export default function CleansingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
-  const itemsPreview = useMemo(() => items.slice(0, 10), [items]);
-
   const previewRows = useMemo(() => {
-    return itemsPreview.map((item, index) => {
+    return items.map((item, index) => {
       if (typeof item === "object" && item !== null) {
         const payload = item as Record<string, unknown>;
         const rawLabel = getFirstValue(payload, VALUE_LABEL_KEYS) as string | undefined;
@@ -521,7 +519,7 @@ export default function CleansingPage() {
         cleansed: formatValue(item),
       };
     });
-  }, [itemsPreview]);
+  }, [items]);
 
   const handleSendToEnrichment = async () => {
     if (!context?.metadata.cleansedId) {
@@ -691,11 +689,6 @@ export default function CleansingPage() {
                 Original vs Cleansed values
               </h2>
             </div>
-            {context.items?.length && context.items.length > 10 && (
-              <span className="text-xs font-semibold text-amber-600">
-                Showing first {previewRows.length} items
-              </span>
-            )}
           </div>
 
           {itemsLoading ? (
@@ -719,7 +712,8 @@ export default function CleansingPage() {
               No cleansed items available yet.
             </div>
           ) : (
-            <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100">
+            <div className="mt-4 rounded-2xl border border-slate-100">
+              <div className="max-h-[480px] overflow-y-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -744,6 +738,7 @@ export default function CleansingPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </section>

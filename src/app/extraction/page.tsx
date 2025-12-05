@@ -320,10 +320,19 @@ export default function ExtractionPage() {
     [treeNodes, searchQuery],
   );
 
+  const activeNode = useMemo(
+    () => (activeNodeId ? nodeMap.get(activeNodeId) ?? null : null),
+    [activeNodeId, nodeMap],
+  );
+
   const activeValue = useMemo(() => {
     if (!activeNodeId) return undefined;
     const node = nodeMap.get(activeNodeId);
     if (!node) return undefined;
+    if ("value" in node) {
+      return node.value;
+    }
+    if (!parsedJson) return undefined;
     return getValueAtPath(parsedJson, node.path.replace(/^[^\.]+\.?/, ""));
   }, [activeNodeId, nodeMap, parsedJson]);
 
@@ -575,8 +584,11 @@ export default function ExtractionPage() {
                   Field
                 </p>
                 <p className="text-sm font-semibold text-slate-900">
-                  {activeNodeId ?? "Select a node"}
+                  {activeNode?.label ?? "Select a node"}
                 </p>
+                {activeNode && (
+                  <p className="text-xs text-slate-500">{activeNode.path}</p>
+                )}
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-400">

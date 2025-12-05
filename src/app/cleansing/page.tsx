@@ -1,13 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  loadCleansedContext,
-  clearCleansedContext,
-  saveEnrichmentContext,
-  type CleansedContext,
-} from "@/lib/extraction-context";
+import { useRouter, useSearchParams } from "next/navigation";
+import { clearCleansedContext, saveEnrichmentContext } from "@/lib/extraction-context";
 import { PipelineTracker } from "@/components/PipelineTracker";
 
 const RULES = [
@@ -93,18 +88,73 @@ const FeedbackPill = ({ feedback }: { feedback: Feedback }) => {
   );
 };
 
+type RemoteCleansedContext = {
+  metadata: {
+    name: string;
+    size: number;
+    source: string;
+    cleansedId?: string;
+    status?: string;
+    uploadedAt: number;
+  };
+  status?: string;
+  items?: unknown[];
+  rawBody?: string;
+  fallbackReason?: string;
+};
+
 export default function CleansingPage() {
   const router = useRouter();
-  const [context, setContext] = useState<CleansedContext | null>(null);
+  const searchParams = useSearchParams();
+  const cleansedIdFromQuery = searchParams.get("id");
+  const [context, setContext] = useState<RemoteCleansedContext | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [enrichmentFeedback, setEnrichmentFeedback] = useState<Feedback>({
     state: "idle",
   });
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
 
+  const loadContext = async (id: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/ingestion/cleansed-context?id=${encodeURIComponent(id)}`);
+      const payload = await response.json();
+      if (!response.ok) {
+        setError(payload?.error ?? "Backend rejected the cleansed context request.");
+        setContext(null);
+        return;
+      }
+      const body = payload?.body ?? payload;
+      setContext({
+        metadata: body?.metadata ?? {
+          name: "unknown",
+          size: 0,
+          source: "unknown",
+          uploadedAt: Date.now(),
+        },
+        status: body?.status,
+        items: body?.items,
+        rawBody: body?.rawBody,
+        fallbackReason: body?.fallbackReason,
+      });
+    } catch (contextError) {
+      setError(
+        contextError instanceof Error ? contextError.message : "Unable to load cleansed context.",
+      );
+      setContext(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setContext(loadCleansedContext());
-  }, []);
+    if (cleansedIdFromQuery) {
+      loadContext(cleansedIdFromQuery);
+    }
+  }, [cleansedIdFromQuery]);
 
   const itemsPreview = useMemo(() => {
     if (!context) return [];
@@ -250,17 +300,32 @@ export default function CleansingPage() {
     if (context?.metadata.cleansedId && (!context.items || context.items.length === 0)) {
       fetchItems();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context?.metadata.cleansedId]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-16">
+        <div className="max-w-lg rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Cleansing</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-900">Loading context…</h1>
+          <p className="mt-3 text-sm text-slate-500">
+            Fetching cleansed snapshot from the backend. One moment please.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!context) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-16">
         <div className="max-w-lg rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
           <p className="text-xs uppercase tracking-wide text-slate-400">Cleansing</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-900">No cleansing data yet</h1>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-900">
+            {error ?? "Cleansed context not found"}
+          </h1>
           <p className="mt-3 text-sm text-slate-500">
-            Trigger cleansing from the Extraction view to review items here.
+            Provide a valid `id` query parameter or trigger the pipeline again.
           </p>
           <button
             type="button"

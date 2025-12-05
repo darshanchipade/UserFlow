@@ -151,23 +151,41 @@ const isDisplayable = (value: unknown) => {
   return false;
 };
 
+const extractStringKey = (value?: string | null) => {
+  if (!value) return undefined;
+  return value
+    .replace(/^.*::ref::/, "")
+    .split(".")
+    .pop()
+    ?.replace(/\[[0-9]+\]/g, "")
+    .trim();
+};
+
 const pickValueFromPayload = (
   payload: Record<string, unknown>,
   preferredKeys: string[],
   explicitKey?: string | null,
 ): unknown => {
-  const normalizedKey = explicitKey
-    ?.split(".")
-    .pop()
-    ?.replace(/\[[0-9]+\]/g, "")
-    ?.trim();
+  const normalizedKey = extractStringKey(explicitKey);
   const searchKeys = [
     normalizedKey,
     ...preferredKeys,
     ...FALLBACK_VALUE_KEYS,
   ].filter((key): key is string => Boolean(key));
 
-  const tryGet = (source: Record<string, unknown>) => {
+  const candidateSources: Array<Record<string, unknown>> = [payload];
+  if (payload.context && typeof payload.context === "object") {
+    candidateSources.push(payload.context as Record<string, unknown>);
+    const facets = (payload.context as Record<string, unknown>).facets;
+    if (facets && typeof facets === "object") {
+      candidateSources.push(facets as Record<string, unknown>);
+    }
+  }
+  if (payload.facets && typeof payload.facets === "object") {
+    candidateSources.push(payload.facets as Record<string, unknown>);
+  }
+
+  for (const source of candidateSources) {
     for (const key of searchKeys) {
       const candidate = source[key];
       if (
@@ -177,16 +195,6 @@ const pickValueFromPayload = (
         return candidate;
       }
     }
-    return undefined;
-  };
-
-  const direct = tryGet(payload);
-  if (direct !== undefined) {
-    return direct;
-  }
-
-  if (payload.context && typeof payload.context === "object") {
-    return tryGet(payload.context as Record<string, unknown>);
   }
 
   return undefined;

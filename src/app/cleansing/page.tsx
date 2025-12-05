@@ -166,13 +166,34 @@ const pickValueFromPayload = (
   }
 
   if (explicitKey && isDisplayable(payload[explicitKey])) {
-    return payload[explicitKey];
+    const candidate = payload[explicitKey];
+    if (!(typeof candidate === "string" && candidate.trim() === explicitKey)) {
+      return candidate;
+    }
+  }
+  if (explicitKey && payload.context && typeof payload.context === "object") {
+    const contextRecord = payload.context as Record<string, unknown>;
+    const contextCandidate = contextRecord[explicitKey];
+    if (
+      isDisplayable(contextCandidate) &&
+      !(typeof contextCandidate === "string" && contextCandidate.trim() === explicitKey)
+    ) {
+      return contextCandidate;
+    }
   }
 
   for (const key of FALLBACK_VALUE_KEYS) {
     const candidate = payload[key];
     if (isDisplayable(candidate)) {
       return candidate;
+    }
+  }
+  if (payload.context && typeof payload.context === "object") {
+    for (const key of FALLBACK_VALUE_KEYS) {
+      const candidate = (payload.context as Record<string, unknown>)[key];
+      if (isDisplayable(candidate)) {
+        return candidate;
+      }
     }
   }
 
@@ -192,7 +213,8 @@ const normalizeLabel = (rawLabel: string | undefined, fallback: string): string 
   const cleaned = withoutRef.replace(/\s+/g, " ").trim();
   const segments = cleaned.split(/[./]/).filter(Boolean);
   const candidate = segments[segments.length - 1] ?? cleaned;
-  return candidate.replace(/\[[0-9]+\]/g, "") || fallback;
+  const withoutIndex = candidate.replace(/\[[0-9]+\]/g, "");
+  return withoutIndex || fallback;
 };
 
 const VALUE_LABEL_KEYS = [

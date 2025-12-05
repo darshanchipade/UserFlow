@@ -10,6 +10,22 @@ const safeParse = (payload: string) => {
   }
 };
 
+const extractId = (payload: unknown): string | null => {
+  if (typeof payload === "string") {
+    return payload.trim().length ? payload.trim() : null;
+  }
+  if (typeof payload === "object" && payload !== null) {
+    const candidate =
+      (payload as Record<string, unknown>).id ??
+      (payload as Record<string, unknown>).cleansedDataStoreId ??
+      (payload as Record<string, unknown>).cleansedId;
+    if (typeof candidate === "string" && candidate.trim().length) {
+      return candidate.trim();
+    }
+  }
+  return null;
+};
+
 export async function POST(request: NextRequest) {
   if (!backendBaseUrl) {
     return NextResponse.json(
@@ -28,40 +44,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const id =
-    typeof incoming === "object" && incoming !== null
-      ? ((incoming as Record<string, unknown>).id as string | undefined)
-      : undefined;
-
-  if (!id) {
+  const cleansedId = extractId(incoming);
+  if (!cleansedId) {
     return NextResponse.json(
-      { error: "Missing `id` in request body." },
+      { error: "Missing `id`/`cleansedDataStoreId`/`cleansedId` attribute." },
       { status: 400 },
     );
   }
 
   try {
-    const upstream = await fetch(
-      `${backendBaseUrl}/api/start-enrichment/${encodeURIComponent(id)}`,
-      {
-        method: "POST",
-      },
-    );
-
+    const targetUrl = new URL(`/api/enrichment/start/${cleansedId}`, backendBaseUrl);
+    const upstream = await fetch(targetUrl, { method: "POST" });
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);
-    const statusValue =
-      typeof body === "object" && body !== null && typeof (body as Record<string, unknown>).status === "string"
-        ? ((body as Record<string, unknown>).status as string)
-        : typeof rawBody === "string"
-          ? rawBody
-          : null;
 
     return NextResponse.json(
       {
         upstreamStatus: upstream.status,
         upstreamOk: upstream.ok,
-        status: statusValue,
         body,
         rawBody,
       },

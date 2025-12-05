@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 const backendBaseUrl = process.env.SPRINGBOOT_BASE_URL;
 
-const safeParse = (payload: string) => {
+const parseUpstreamBody = async (upstream: Response) => {
+  const rawBody = await upstream.text();
+  let body: unknown = rawBody;
   try {
-    return JSON.parse(payload);
+    body = JSON.parse(rawBody);
   } catch {
-    return payload;
+    // leave body as raw string
   }
+  return { body, rawBody };
 };
 
 export async function GET(request: NextRequest) {
@@ -29,8 +32,7 @@ export async function GET(request: NextRequest) {
   try {
     const targetUrl = new URL(`/api/cleansed-context/${id}`, backendBaseUrl);
     const upstream = await fetch(targetUrl);
-    const rawBody = await upstream.text();
-    const body = safeParse(rawBody);
+    const { body, rawBody } = await parseUpstreamBody(upstream);
 
     return NextResponse.json(
       {

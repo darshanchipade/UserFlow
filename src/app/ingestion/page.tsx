@@ -29,6 +29,7 @@ import {
 } from "@/lib/extraction-context";
 import { storeClientSnapshot } from "@/lib/client/snapshot-store";
 import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
+import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
 type UploadTab = "local" | "api" | "s3";
 
@@ -370,13 +371,18 @@ export default function IngestionPage() {
       return;
     }
 
+    const fallbackIdentifier = `file-upload:${localFile.name}`;
+    const sourceIdentifier = details.sourceIdentifier ?? fallbackIdentifier;
+    const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "file") ?? "file";
     const metadata: ExtractionContext["metadata"] = {
       name: localFile.name,
       size: localFile.size,
-      source: "Local",
+      source: describeSourceLabel(sourceType, "Local upload"),
       cleansedId: details.cleansedId,
       status: details.status,
       uploadedAt: Date.now(),
+      sourceIdentifier,
+      sourceType,
     };
     const snapshotId = details.cleansedId ?? uploadId;
     let snapshotPersisted = false;
@@ -502,13 +508,18 @@ export default function IngestionPage() {
 
     const previewNodes = seedPreviewTree("API payload", parsed);
 
+    const fallbackIdentifier = details.cleansedId ?? `api-payload:${uploadId}`;
+    const sourceIdentifier = details.sourceIdentifier ?? fallbackIdentifier;
+    const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "api") ?? "api";
     const metadata: ExtractionContext["metadata"] = {
       name: "API payload",
       size: apiPayload.length,
-      source: "API",
+      source: describeSourceLabel(sourceType, "API payload"),
       cleansedId: details.cleansedId,
       status: details.status,
       uploadedAt: Date.now(),
+      sourceIdentifier,
+      sourceType,
     };
     const snapshotId = details.cleansedId ?? uploadId;
     const serializedPayload = JSON.stringify(parsed, null, 2);
@@ -625,13 +636,17 @@ export default function IngestionPage() {
       return;
     }
 
+    const sourceIdentifier = details.sourceIdentifier ?? normalized;
+    const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "s3") ?? "s3";
     const metadata: ExtractionContext["metadata"] = {
       name: normalized,
       size: 0,
-      source: "S3",
+      source: describeSourceLabel(sourceType, "S3 / Cloud"),
       cleansedId: details.cleansedId,
       status: details.status,
       uploadedAt: Date.now(),
+      sourceIdentifier,
+      sourceType,
     };
     const snapshotId = details.cleansedId ?? uploadId;
 
@@ -682,20 +697,26 @@ export default function IngestionPage() {
   const parseBackendPayload = (payload: any) => {
     const body = payload?.body;
     const rawBody = payload?.rawBody;
+
+    const bodyRecord =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : null;
+    const metadataRecord =
+      bodyRecord?.metadata && typeof bodyRecord.metadata === "object"
+        ? (bodyRecord.metadata as Record<string, unknown>)
+        : null;
+
     const cleansedId =
-      typeof body === "object" && body !== null
-        ? (body["cleansedDataStoreId"] as string | undefined)
-        : undefined;
-    const status =
-      typeof body === "object" && body !== null
-        ? (body["status"] as string | undefined)
-        : undefined;
+      pickString(bodyRecord?.cleansedDataStoreId) ??
+      pickString(bodyRecord?.cleansedId) ??
+      pickString(bodyRecord?.id);
+    const status = pickString(bodyRecord?.status);
 
     const pickMessage = (source: unknown) => {
-      if (typeof source === "string" && source.trim()) {
-        return source.trim();
-      }
-      if (typeof source === "object" && source !== null) {
+      const direct = pickString(source);
+      if (direct) return direct;
+      if (source && typeof source === "object") {
         const candidates = [
           (source as Record<string, unknown>)["error"],
           (source as Record<string, unknown>)["message"],
@@ -704,13 +725,29 @@ export default function IngestionPage() {
           (source as Record<string, unknown>)["description"],
         ];
         for (const candidate of candidates) {
-          if (typeof candidate === "string" && candidate.trim()) {
-            return candidate.trim();
-          }
+          const value = pickString(candidate);
+          if (value) return value;
         }
       }
       return undefined;
     };
+
+    const deriveSourceIdentifier = () => {
+      return (
+        pickString(bodyRecord?.sourceIdentifier) ??
+        pickString(bodyRecord?.sourceUri) ??
+        pickString(metadataRecord?.sourceIdentifier) ??
+        pickString(metadataRecord?.sourceUri) ??
+        pickString(payload?.sourceIdentifier) ??
+        pickString(payload?.sourceUri)
+      );
+    };
+
+    const sourceIdentifier = deriveSourceIdentifier();
+    const sourceType = inferSourceType(
+      pickString(bodyRecord?.sourceType) ?? pickString(metadataRecord?.sourceType),
+      sourceIdentifier,
+    );
 
     const message =
       pickMessage(body) ??
@@ -718,7 +755,7 @@ export default function IngestionPage() {
       pickMessage(rawBody) ??
       (typeof rawBody === "string" ? rawBody : undefined);
 
-    return { cleansedId, status, message };
+    return { cleansedId, status, message, sourceIdentifier, sourceType };
   };
 
   type SnapshotPayload = Omit<ExtractionSnapshot, "storedAt">;

@@ -27,6 +27,7 @@ import {
 import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
 import { readClientSnapshot } from "@/lib/client/snapshot-store";
 import { PipelineTracker } from "@/components/PipelineTracker";
+import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes)) return "—";
@@ -152,8 +153,38 @@ const buildCleansedContextPayload = (
   backendResponse: any,
 ) => {
   const body = backendResponse?.body ?? backendResponse;
+  const bodyRecord =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : null;
+  const metadataRecord =
+    bodyRecord?.metadata && typeof bodyRecord.metadata === "object"
+      ? (bodyRecord.metadata as Record<string, unknown>)
+      : null;
+  const sourceIdentifier =
+    pickString(bodyRecord?.sourceIdentifier) ??
+    pickString(bodyRecord?.sourceUri) ??
+    pickString(metadataRecord?.sourceIdentifier) ??
+    metadata.sourceIdentifier;
+  const sourceType =
+    inferSourceType(
+      pickString(bodyRecord?.sourceType) ?? pickString(metadataRecord?.sourceType),
+      sourceIdentifier ?? metadata.sourceIdentifier,
+      metadata.sourceType,
+    ) ?? metadata.sourceType;
+  const cleansedId =
+    pickString(bodyRecord?.cleansedDataStoreId) ??
+    pickString(bodyRecord?.cleansedId) ??
+    metadata.cleansedId;
+  const mergedMetadata: ExtractionContext["metadata"] = {
+    ...metadata,
+    sourceIdentifier: sourceIdentifier ?? metadata.sourceIdentifier,
+    sourceType: sourceType ?? metadata.sourceType,
+    source: describeSourceLabel(sourceType ?? metadata.sourceType, metadata.source),
+    cleansedId: cleansedId ?? metadata.cleansedId,
+  };
   return {
-    metadata,
+    metadata: mergedMetadata,
     items: extractItemsFromBackend(body),
     rawBody: typeof backendResponse?.rawBody === "string" ? backendResponse.rawBody : undefined,
     status: extractStatusFromBackend(body) ?? extractStatusFromBackend(backendResponse),
@@ -481,6 +512,13 @@ export default function ExtractionPage() {
     );
   }
 
+  const sourceLabel = describeSourceLabel(
+    context.metadata.sourceType ?? context.metadata.source,
+    context.metadata.source,
+  );
+  const sourceIdentifier =
+    context.metadata.sourceIdentifier ?? context.metadata.source ?? "—";
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
@@ -532,7 +570,7 @@ export default function ExtractionPage() {
             </div>
             <div className="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
               <InboxStackIcon className="size-4 text-slate-500" />
-              <span className="font-semibold text-slate-700">{context.metadata.source}</span>
+              <span className="font-semibold text-slate-700">{sourceLabel}</span>
             </div>
             <div className="mt-4">
               <div className="relative">
@@ -634,6 +672,14 @@ export default function ExtractionPage() {
               <dd className="text-sm font-semibold text-slate-900">
                 {formatBytes(context.metadata.size)}
               </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Source type</dt>
+              <dd className="text-sm font-semibold text-slate-900">{sourceLabel}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Source identifier</dt>
+              <dd className="text-sm font-semibold text-slate-900 break-all">{sourceIdentifier}</dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Cleansed ID</dt>

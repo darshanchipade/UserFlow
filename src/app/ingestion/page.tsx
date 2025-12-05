@@ -377,29 +377,29 @@ export default function IngestionPage() {
       uploadedAt: Date.now(),
     };
     const snapshotId = details.cleansedId ?? uploadId;
+    let snapshotPersisted = false;
 
-    try {
-      await persistSnapshot(snapshotId, {
+    if (snapshotId) {
+      const result = await persistSnapshot(snapshotId, {
         mode: "local",
         metadata,
         rawJson: localFileText ?? undefined,
         tree: treeNodes,
         backendPayload: payload,
       });
-    } catch (error) {
-      setExtractFeedback({
-        state: "error",
-        message:
-          error instanceof Error ? error.message : "Unable to cache extraction snapshot.",
-      });
-      setExtracting(false);
-      return;
+      snapshotPersisted = result.ok;
+      if (!result.ok) {
+        console.warn("Unable to cache extraction snapshot, falling back to session storage.", result.message);
+      }
     }
 
     const persistenceResult = saveExtractionContext({
       mode: "local",
       metadata,
-      snapshotId,
+      snapshotId: snapshotPersisted ? snapshotId : undefined,
+      tree: snapshotPersisted ? undefined : treeNodes,
+      rawJson: snapshotPersisted ? undefined : localFileText ?? undefined,
+      backendPayload: snapshotPersisted ? undefined : payload,
     });
 
     if (!persistenceResult.ok) {
@@ -506,28 +506,31 @@ export default function IngestionPage() {
     const snapshotId = details.cleansedId ?? uploadId;
     const serializedPayload = JSON.stringify(parsed, null, 2);
 
-    try {
-      await persistSnapshot(snapshotId, {
+    let snapshotPersisted = false;
+    if (snapshotId) {
+      const snapshotResult = await persistSnapshot(snapshotId, {
         mode: "api",
         metadata,
         rawJson: serializedPayload,
         tree: previewNodes,
         backendPayload: payload,
       });
-    } catch (error) {
-      setExtractFeedback({
-        state: "error",
-        message:
-          error instanceof Error ? error.message : "Unable to cache extraction snapshot.",
-      });
-      setExtracting(false);
-      return;
+      snapshotPersisted = snapshotResult.ok;
+      if (!snapshotResult.ok) {
+        console.warn(
+          "Unable to cache API extraction snapshot, falling back to browser session storage.",
+          snapshotResult.message,
+        );
+      }
     }
 
     const persistenceResult = saveExtractionContext({
       mode: "api",
       metadata,
-      snapshotId,
+      snapshotId: snapshotPersisted ? snapshotId : undefined,
+      tree: snapshotPersisted ? undefined : previewNodes,
+      rawJson: snapshotPersisted ? undefined : serializedPayload,
+      backendPayload: snapshotPersisted ? undefined : payload,
     });
 
     if (!persistenceResult.ok) {
@@ -623,28 +626,29 @@ export default function IngestionPage() {
     };
     const snapshotId = details.cleansedId ?? uploadId;
 
-    try {
-      await persistSnapshot(snapshotId, {
+    let snapshotPersisted = false;
+    if (snapshotId) {
+      const snapshotResult = await persistSnapshot(snapshotId, {
         mode: "s3",
         metadata,
         sourceUri: normalized,
         backendPayload: payload,
       });
-    } catch (error) {
-      setExtractFeedback({
-        state: "error",
-        message:
-          error instanceof Error ? error.message : "Unable to cache extraction snapshot.",
-      });
-      setExtracting(false);
-      return;
+      snapshotPersisted = snapshotResult.ok;
+      if (!snapshotResult.ok) {
+        console.warn(
+          "Unable to cache S3 extraction snapshot, falling back to session storage metadata only.",
+          snapshotResult.message,
+        );
+      }
     }
 
     const persistenceResult = saveExtractionContext({
       mode: "s3",
       metadata,
       sourceUri: normalized,
-      snapshotId,
+      snapshotId: snapshotPersisted ? snapshotId : undefined,
+      backendPayload: snapshotPersisted ? undefined : payload,
     });
 
     if (!persistenceResult.ok) {
@@ -715,33 +719,46 @@ export default function IngestionPage() {
     backendPayload?: unknown;
   };
 
-  const persistSnapshot = async (id: string, payload: SnapshotPayload) => {
-    const response = await fetch("/api/ingestion/context", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id,
-        payload: {
-          ...payload,
-          mode: payload.mode,
-          metadata: payload.metadata,
-          rawJson: payload.rawJson,
-          tree: payload.tree,
-          sourceUri: payload.sourceUri,
-          backendPayload: payload.backendPayload,
-        },
-      }),
-    });
+  const persistSnapshot = async (
+    id: string,
+    payload: SnapshotPayload,
+  ): Promise<{ ok: boolean; message?: string }> => {
+    try {
+      const response = await fetch("/api/ingestion/context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          payload: {
+            ...payload,
+            mode: payload.mode,
+            metadata: payload.metadata,
+            rawJson: payload.rawJson,
+            tree: payload.tree,
+            sourceUri: payload.sourceUri,
+            backendPayload: payload.backendPayload,
+          },
+        }),
+      });
 
-    if (!response.ok) {
-      let message = "Failed to cache extraction snapshot.";
-      try {
-        const body = await response.json();
-        if (body?.error) message = body.error;
-      } catch {
-        // ignore
+      if (!response.ok) {
+        let message = "Failed to cache extraction snapshot.";
+        try {
+          const body = await response.json();
+          if (body?.error) message = body.error;
+        } catch {
+          // ignore
+        }
+        return { ok: false, message };
       }
-      throw new Error(message);
+
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message:
+          error instanceof Error ? error.message : "Failed to cache extraction snapshot.",
+      };
     }
   };
 

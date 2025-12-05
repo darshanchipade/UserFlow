@@ -137,24 +137,24 @@ const getFileLabel = (fileName: string) => {
   }
 };
 
+const describeExtractionPersistenceError = (result?: PersistenceResult) => {
+  if (!result) {
+    return "Extraction context could not be cached in this browser.";
+  }
+  switch (result.reason) {
+    case "quota":
+      return "Browser storage is full. Clear other extraction tabs or reduce the payload size and try again.";
+    case "ssr":
+      return "Extraction context can only be saved in a browser tab.";
+    default:
+      return "Extraction context could not be cached locally. Check the console for details.";
+  }
+};
+
 const FeedbackPill = ({ feedback }: { feedback: ApiFeedback }) => {
   if (feedback.state === "idle") {
     return null;
   }
-  const describeExtractionPersistenceError = (result?: PersistenceResult) => {
-    if (!result) {
-      return "Extraction context could not be cached in this browser.";
-    }
-    switch (result.reason) {
-      case "quota":
-        return "Browser storage is full. Clear other extraction tabs or reduce the payload size and try again.";
-      case "ssr":
-        return "Extraction context can only be saved in a browser tab.";
-      default:
-        return "Extraction context could not be cached locally. Check the console for details.";
-    }
-  };
-
 
   const className = clsx(
     "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",

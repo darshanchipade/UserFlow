@@ -148,8 +148,6 @@ const isDisplayable = (value: unknown) => {
   if (value === undefined || value === null) return false;
   if (typeof value === "string") return value.trim().length > 0;
   if (typeof value === "number" || typeof value === "boolean") return true;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
   return false;
 };
 
@@ -158,50 +156,37 @@ const pickValueFromPayload = (
   preferredKeys: string[],
   explicitKey?: string | null,
 ): unknown => {
-  for (const key of preferredKeys) {
-    const candidate = payload[key];
-    if (isDisplayable(candidate)) {
-      return candidate;
-    }
-  }
+  const normalizedKey = explicitKey
+    ?.split(".")
+    .pop()
+    ?.replace(/\[[0-9]+\]/g, "")
+    ?.trim();
+  const searchKeys = [
+    normalizedKey,
+    ...preferredKeys,
+    ...FALLBACK_VALUE_KEYS,
+  ].filter((key): key is string => Boolean(key));
 
-  if (explicitKey && isDisplayable(payload[explicitKey])) {
-    const candidate = payload[explicitKey];
-    if (!(typeof candidate === "string" && candidate.trim() === explicitKey)) {
-      return candidate;
-    }
-  }
-  if (explicitKey && payload.context && typeof payload.context === "object") {
-    const contextRecord = payload.context as Record<string, unknown>;
-    const contextCandidate = contextRecord[explicitKey];
-    if (
-      isDisplayable(contextCandidate) &&
-      !(typeof contextCandidate === "string" && contextCandidate.trim() === explicitKey)
-    ) {
-      return contextCandidate;
-    }
-  }
-
-  for (const key of FALLBACK_VALUE_KEYS) {
-    const candidate = payload[key];
-    if (isDisplayable(candidate)) {
-      return candidate;
-    }
-  }
-  if (payload.context && typeof payload.context === "object") {
-    for (const key of FALLBACK_VALUE_KEYS) {
-      const candidate = (payload.context as Record<string, unknown>)[key];
-      if (isDisplayable(candidate)) {
+  const tryGet = (source: Record<string, unknown>) => {
+    for (const key of searchKeys) {
+      const candidate = source[key];
+      if (
+        isDisplayable(candidate) &&
+        !(typeof candidate === "string" && candidate.trim() === key.trim())
+      ) {
         return candidate;
       }
     }
+    return undefined;
+  };
+
+  const direct = tryGet(payload);
+  if (direct !== undefined) {
+    return direct;
   }
 
-  for (const [key, value] of Object.entries(payload)) {
-    if (key.startsWith("_")) continue;
-    if (isDisplayable(value)) {
-      return value;
-    }
+  if (payload.context && typeof payload.context === "object") {
+    return tryGet(payload.context as Record<string, unknown>);
   }
 
   return undefined;
@@ -235,6 +220,8 @@ const ORIGINAL_VALUE_KEYS = [
   "valueBefore",
   "value",
   "copy",
+  "text",
+  "content",
 ];
 const CLEANSED_VALUE_KEYS = [
   "cleansedValue",
@@ -246,16 +233,9 @@ const CLEANSED_VALUE_KEYS = [
   "value",
   "cleansedCopy",
   "cleansedContent",
-];
-const FALLBACK_VALUE_KEYS = [
-  "value",
   "text",
-  "copy",
-  "content",
-  "payload",
-  "cleaned",
-  "items",
 ];
+const FALLBACK_VALUE_KEYS = ["copy", "text", "value", "content", "body", "stringValue"];
 
 const pickNumber = (value: unknown) => {
   if (typeof value === "number" && Number.isFinite(value)) {

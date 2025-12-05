@@ -57,6 +57,14 @@ const deriveItems = (items?: unknown[], rawBody?: string): unknown[] => {
   if (Array.isArray(items) && items.length) {
     return items;
   }
+const parseJson = async (response: Response) => {
+  const rawBody = await response.text();
+  try {
+    return { body: JSON.parse(rawBody), rawBody };
+  } catch {
+    return { body: null, rawBody };
+  }
+};
   if (typeof rawBody === "string" && rawBody.trim()) {
     try {
       const parsed = JSON.parse(rawBody);
@@ -161,18 +169,27 @@ export default function CleansingPage() {
     setItemsError(null);
     try {
       const response = await fetch(`/api/ingestion/cleansed-items?id=${encodeURIComponent(id)}`);
-      const payload = await response.json();
+      const { body, rawBody } = await parseJson(response);
       if (!response.ok) {
-        throw new Error(payload?.error ?? "Backend rejected the items request.");
+        throw new Error(
+          (body as Record<string, unknown>)?.error as string ??
+            rawBody ??
+            "Backend rejected the items request.",
+        );
       }
-      const normalized = Array.isArray(payload?.items) ? payload.items : [];
+      const normalized = Array.isArray((body as Record<string, unknown>)?.items)
+        ? ((body as Record<string, unknown>).items as unknown[])
+        : [];
       setItems(normalized);
       setContext((previous) =>
         previous
           ? {
               ...previous,
               items: normalized,
-              rawBody: typeof payload?.rawBody === "string" ? payload.rawBody : previous.rawBody,
+              rawBody:
+                typeof (body as Record<string, unknown>)?.rawBody === "string"
+                  ? ((body as Record<string, unknown>).rawBody as string)
+                  : previous.rawBody,
             }
           : previous,
       );
@@ -196,23 +213,37 @@ export default function CleansingPage() {
       setError(null);
       try {
         const response = await fetch(`/api/ingestion/cleansed-context?id=${encodeURIComponent(id)}`);
-        const payload = await response.json();
+        const { body, rawBody } = await parseJson(response);
         if (!response.ok) {
-          throw new Error(payload?.error ?? "Backend rejected the cleansed context request.");
+          throw new Error(
+            (body as Record<string, unknown>)?.error as string ??
+              rawBody ??
+              "Backend rejected the cleansed context request.",
+          );
         }
-        const body = payload?.body ?? payload;
+        const payloadBody = (body as Record<string, unknown>) ?? {};
         const remoteContext: RemoteCleansedContext = {
-          metadata: body?.metadata ?? localSnapshot?.metadata ?? {
+          metadata: (payloadBody.metadata as CleansedContext["metadata"]) ??
+            localSnapshot?.metadata ?? {
             name: "Unknown dataset",
             size: 0,
             source: "unknown",
             uploadedAt: Date.now(),
             cleansedId: id,
           },
-          status: body?.status,
-          items: Array.isArray(body?.items) ? body.items : undefined,
-          rawBody: typeof body?.rawBody === "string" ? body.rawBody : undefined,
-          fallbackReason: body?.fallbackReason,
+          status:
+            typeof payloadBody.status === "string"
+              ? (payloadBody.status as string)
+              : localSnapshot?.status,
+          items: Array.isArray(payloadBody.items) ? (payloadBody.items as unknown[]) : undefined,
+          rawBody:
+            typeof payloadBody.rawBody === "string"
+              ? (payloadBody.rawBody as string)
+              : undefined,
+          fallbackReason:
+            typeof payloadBody.fallbackReason === "string"
+              ? (payloadBody.fallbackReason as string)
+              : undefined,
         };
         setContext(remoteContext);
         const derived = deriveItems(remoteContext.items, remoteContext.rawBody);

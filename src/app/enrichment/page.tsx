@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { clearEnrichmentContext, loadEnrichmentContext, type EnrichmentContext } from "@/lib/extraction-context";
+import {
+  clearEnrichmentContext,
+  loadEnrichmentContext,
+  type EnrichmentContext,
+} from "@/lib/extraction-context";
 import { PipelineTracker } from "@/components/PipelineTracker";
 
 type Feedback = {
@@ -79,6 +83,14 @@ const mapLocalContext = (local: EnrichmentContext | null): RemoteEnrichmentConte
 
 const extractSummary = (body: unknown): string => {
   if (typeof body === "string") return body;
+const parseJson = async (response: Response) => {
+  const rawBody = await response.text();
+  try {
+    return { body: JSON.parse(rawBody), rawBody };
+  } catch {
+    return { body: null, rawBody };
+  }
+};
   if (body && typeof body === "object") {
     const source = body as Record<string, unknown>;
     const summaryKeys = ["summary", "aiSummary", "insights", "result", "text", "content"];
@@ -116,23 +128,28 @@ export default function EnrichmentPage() {
 
   const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> => {
     const response = await fetch(`/api/ingestion/enrichment/status?id=${encodeURIComponent(id)}`);
-    const payload = await response.json();
+    const { body, rawBody } = await parseJson(response);
     if (!response.ok) {
-      throw new Error(payload?.error ?? "Backend rejected the enrichment status request.");
+      throw new Error(
+        (body as Record<string, unknown>)?.error as string ??
+          rawBody ??
+          "Backend rejected the enrichment status request.",
+      );
     }
-    const body = payload?.body ?? payload;
+    const payloadBody = (body as Record<string, unknown>) ?? {};
     return {
-      metadata: body?.metadata ?? localSnapshot?.metadata ?? {
+      metadata: (payloadBody.metadata as EnrichmentContext["metadata"]) ??
+        localSnapshot?.metadata ?? {
         name: "Unknown dataset",
         size: 0,
         source: "unknown",
         uploadedAt: Date.now(),
         cleansedId: id,
       },
-      startedAt: body?.startedAt ?? localSnapshot?.startedAt ?? Date.now(),
+      startedAt: typeof payloadBody.startedAt === "number" ? payloadBody.startedAt : Date.now(),
       statusHistory:
-        Array.isArray(body?.statusHistory) && body.statusHistory.length
-          ? body.statusHistory
+        Array.isArray(payloadBody.statusHistory) && payloadBody.statusHistory.length
+          ? (payloadBody.statusHistory as { status: string; timestamp: number }[])
           : FALLBACK_HISTORY,
     };
   };
@@ -173,11 +190,15 @@ export default function EnrichmentPage() {
     }
     try {
       const response = await fetch(`/api/ingestion/enrichment/result?id=${encodeURIComponent(id)}`);
-      const payload = await response.json();
+      const { body, rawBody } = await parseJson(response);
       if (!response.ok) {
-        throw new Error(payload?.error ?? "Backend rejected the enrichment result request.");
+        throw new Error(
+          (body as Record<string, unknown>)?.error as string ??
+            rawBody ??
+            "Backend rejected the enrichment result request.",
+        );
       }
-      setSummary(extractSummary(payload?.body ?? payload));
+      setSummary(extractSummary(body ?? rawBody));
       setSummaryFeedback({ state: "idle" });
     } catch (summaryError) {
       setSummaryFeedback({

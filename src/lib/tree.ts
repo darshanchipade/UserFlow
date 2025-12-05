@@ -7,8 +7,8 @@ export type TreeNode = {
   value?: unknown;
 };
 
-const MAX_TREE_NODES = 800;
-const MAX_ARRAY_CHILDREN = 12;
+const MAX_TREE_NODES = 5000;
+const MAX_ARRAY_CHILDREN = 100;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

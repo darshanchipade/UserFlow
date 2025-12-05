@@ -218,14 +218,13 @@ const normalizeLabel = (rawLabel: string | undefined, fallback: string): string 
 };
 
 const VALUE_LABEL_KEYS = [
+  "originalFieldName",
+  "fieldName",
   "field",
   "label",
-  "path",
   "key",
   "name",
-  "usagePath",
   "itemType",
-  "originalFieldName",
 ];
 const ORIGINAL_VALUE_KEYS = [
   "originalValue",
@@ -234,6 +233,8 @@ const ORIGINAL_VALUE_KEYS = [
   "before",
   "input",
   "valueBefore",
+  "value",
+  "copy",
 ];
 const CLEANSED_VALUE_KEYS = [
   "cleansedValue",
@@ -243,6 +244,8 @@ const CLEANSED_VALUE_KEYS = [
   "output",
   "valueAfter",
   "value",
+  "cleansedCopy",
+  "cleansedContent",
 ];
 const FALLBACK_VALUE_KEYS = [
   "value",
@@ -514,19 +517,27 @@ export default function CleansingPage() {
     return items.map((item, index) => {
       if (typeof item === "object" && item !== null) {
         const payload = item as Record<string, unknown>;
-        const rawLabel = getFirstValue(payload, VALUE_LABEL_KEYS) as string | undefined;
-        const derivedLabel = normalizeLabel(
-          rawLabel,
+        const rawLabel =
           (payload.originalFieldName as string | undefined) ??
-            (payload.itemType as string | undefined) ??
-            `Item ${index + 1}`,
-        );
+          (payload.fieldName as string | undefined) ??
+          (payload.field as string | undefined) ??
+          (payload.label as string | undefined) ??
+          (payload.itemType as string | undefined);
+        const derivedLabel = normalizeLabel(rawLabel, `Item ${index + 1}`);
         const originalCandidate =
-          getFirstValue(payload, ORIGINAL_VALUE_KEYS) ??
-          pickValueFromPayload(payload, ORIGINAL_VALUE_KEYS, derivedLabel);
+          pickValueFromPayload(payload, ORIGINAL_VALUE_KEYS, rawLabel) ??
+          pickValueFromPayload(
+            (payload.context as Record<string, unknown>) ?? {},
+            ORIGINAL_VALUE_KEYS,
+            rawLabel,
+          );
         const cleansedCandidate =
-          getFirstValue(payload, CLEANSED_VALUE_KEYS) ??
-          pickValueFromPayload(payload, CLEANSED_VALUE_KEYS, derivedLabel);
+          pickValueFromPayload(payload, CLEANSED_VALUE_KEYS, rawLabel) ??
+          pickValueFromPayload(
+            (payload.context as Record<string, unknown>) ?? {},
+            CLEANSED_VALUE_KEYS,
+            rawLabel,
+          );
         return {
           id: payload.id ?? `${derivedLabel}-${index}`,
           label: derivedLabel,

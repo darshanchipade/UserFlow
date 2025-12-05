@@ -10,7 +10,7 @@ import {
   MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   TreeNode,
@@ -21,7 +21,12 @@ import {
   ExtractionContext,
   clearExtractionContext,
   loadExtractionContext,
+  saveCleansedContext,
+  type PersistenceResult,
 } from "@/lib/extraction-context";
+import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
+import { readClientSnapshot } from "@/lib/client/snapshot-store";
+import { PipelineTracker } from "@/components/PipelineTracker";
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes)) return "—";
@@ -108,6 +113,66 @@ const flattenTree = (nodes: TreeNode[]) => {
   return map;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null;
+};
+
+const extractItemsFromBackend = (payload: unknown): unknown[] => {
+  if (Array.isArray(payload)) return payload;
+  if (isRecord(payload)) {
+    const candidates = [
+      payload.items,
+      payload.records,
+      payload.data,
+      payload.payload,
+    ];
+
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return [];
+};
+
+const extractStatusFromBackend = (payload: unknown): string | undefined => {
+  if (!isRecord(payload)) return undefined;
+  const candidates = [
+    payload.status,
+    payload.state,
+    payload.currentStatus,
+    payload.pipelineStatus,
+  ];
+  return candidates.find((value) => typeof value === "string") as string | undefined;
+};
+
+const buildCleansedContextPayload = (
+  metadata: ExtractionContext["metadata"],
+  backendResponse: any,
+) => {
+  const body = backendResponse?.body ?? backendResponse;
+  return {
+    metadata,
+    items: extractItemsFromBackend(body),
+    rawBody: typeof backendResponse?.rawBody === "string" ? backendResponse.rawBody : undefined,
+    status: extractStatusFromBackend(body) ?? extractStatusFromBackend(backendResponse),
+  };
+};
+
+const composeSuccessMessage = (storageResult?: PersistenceResult) => {
+  if (!storageResult) {
+    return "Cleansing pipeline triggered.";
+  }
+  if (!storageResult.ok) {
+    return "Cleansing pipeline triggered, but preview caching failed.";
+  }
+  if (storageResult.usedFallback) {
+    return "Cleansing pipeline triggered. Preview cached partially because the payload is large.";
+  }
+  return "Cleansing pipeline triggered.";
+};
+
 export default function ExtractionPage() {
   const router = useRouter();
   const [context, setContext] = useState<ExtractionContext | null>(null);
@@ -119,36 +184,156 @@ export default function ExtractionPage() {
   const [feedback, setFeedback] = useState<Feedback>({ state: "idle" });
   const [sending, setSending] = useState(false);
   const [nodeMap, setNodeMap] = useState<Map<string, TreeNode>>(new Map());
+  const [snapshot, setSnapshot] = useState<ExtractionSnapshot | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [snapshotVersion, setSnapshotVersion] = useState(0);
+
+  const applyTreeFromNodes = useCallback((nodes: TreeNode[]) => {
+    const flattened = flattenTree(nodes);
+    setTreeNodes(nodes);
+    setNodeMap(flattened);
+    setExpandedNodes(new Set(nodes.map((node) => node.id)));
+    setActiveNodeId((previous) => {
+      if (previous && flattened.has(previous)) {
+        return previous;
+      }
+      return nodes[0]?.id ?? null;
+    });
+  }, []);
+
+  const hydrateStructure = useCallback(
+    (tree?: TreeNode[], rawJson?: string) => {
+      if (tree && tree.length) {
+        applyTreeFromNodes(tree);
+        setParsedJson(rawJson ? safeJsonParse(rawJson) : null);
+        return;
+      }
+
+      if (rawJson) {
+        const parsed = safeJsonParse(rawJson);
+        setParsedJson(parsed);
+        if (parsed) {
+          const nodes = buildTreeFromJson(parsed, [], { value: 0 });
+          if (nodes.length) {
+            applyTreeFromNodes(nodes);
+          } else {
+            setTreeNodes([]);
+            setNodeMap(new Map<string, TreeNode>());
+            setExpandedNodes(new Set());
+            setActiveNodeId(null);
+          }
+        } else {
+          setTreeNodes([]);
+          setNodeMap(new Map<string, TreeNode>());
+          setExpandedNodes(new Set());
+          setActiveNodeId(null);
+        }
+        return;
+      }
+
+      setTreeNodes([]);
+      setNodeMap(new Map<string, TreeNode>());
+      setExpandedNodes(new Set());
+      setActiveNodeId(null);
+      setParsedJson(null);
+    },
+    [applyTreeFromNodes],
+  );
 
   useEffect(() => {
     const payload = loadExtractionContext();
     if (!payload) return;
     setContext(payload);
-    if (payload.tree && payload.tree.length) {
-      setTreeNodes(payload.tree);
-      setNodeMap(flattenTree(payload.tree));
-      setExpandedNodes(new Set(payload.tree.map((node) => node.id)));
-      setActiveNodeId(payload.tree[0].id);
-    } else if (payload.rawJson) {
-      const parsed = safeJsonParse(payload.rawJson);
-      if (parsed) {
-        const nodes = buildTreeFromJson(parsed, [], { value: 0 });
-        setTreeNodes(nodes);
-        setNodeMap(flattenTree(nodes));
-      }
+    if ((payload.tree && payload.tree.length) || payload.rawJson) {
+      hydrateStructure(payload.tree, payload.rawJson);
     }
-    setParsedJson(safeJsonParse(payload.rawJson));
-  }, []);
+  }, [hydrateStructure]);
+
+  useEffect(() => {
+    if (!context?.snapshotId) {
+      setSnapshot(null);
+      setSnapshotLoading(false);
+      setSnapshotError(null);
+      return;
+    }
+
+    const snapshotId = context.snapshotId;
+    let cancelled = false;
+    const loadSnapshot = async () => {
+      if (snapshotVersion === 0) {
+        setSnapshot(null);
+      }
+      setSnapshotLoading(true);
+      setSnapshotError(null);
+      try {
+        let snapshotPayload: ExtractionSnapshot | null = null;
+        if (snapshotId.startsWith("local:")) {
+          snapshotPayload = await readClientSnapshot(snapshotId);
+          if (!snapshotPayload) {
+            throw new Error("Local extraction snapshot not found.");
+          }
+        } else {
+          const response = await fetch(
+            `/api/ingestion/context?id=${encodeURIComponent(snapshotId)}`,
+          );
+          let body: any = null;
+          try {
+            body = await response.json();
+          } catch {
+            // ignore parse errors
+          }
+          if (!response.ok) {
+            throw new Error(body?.error ?? "Failed to load extraction snapshot.");
+          }
+          snapshotPayload = body as ExtractionSnapshot;
+        }
+        if (cancelled) return;
+        setSnapshot(snapshotPayload);
+        hydrateStructure(snapshotPayload?.tree, snapshotPayload?.rawJson);
+        setSnapshotLoading(false);
+      } catch (error) {
+        if (cancelled) return;
+        setSnapshotError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load extraction snapshot.",
+        );
+        setSnapshotLoading(false);
+      }
+    };
+
+    loadSnapshot();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [context?.snapshotId, snapshotVersion, hydrateStructure]);
+
+  const retrySnapshotFetch = () => {
+    if (context?.snapshotId) {
+      setSnapshotVersion((value) => value + 1);
+    }
+  };
 
   const filteredTree = useMemo(
     () => filterTree(treeNodes, searchQuery),
     [treeNodes, searchQuery],
   );
 
+  const activeNode = useMemo(
+    () => (activeNodeId ? nodeMap.get(activeNodeId) ?? null : null),
+    [activeNodeId, nodeMap],
+  );
+
   const activeValue = useMemo(() => {
     if (!activeNodeId) return undefined;
     const node = nodeMap.get(activeNodeId);
     if (!node) return undefined;
+    if ("value" in node) {
+      return node.value;
+    }
+    if (!parsedJson) return undefined;
     return getValueAtPath(parsedJson, node.path.replace(/^[^\.]+\.?/, ""));
   }, [activeNodeId, nodeMap, parsedJson]);
 
@@ -217,14 +402,15 @@ export default function ExtractionPage() {
 
     try {
       let response: Response;
+      const snapshotRawJson = snapshot?.rawJson ?? context.rawJson;
       if (context.mode === "s3" && context.sourceUri) {
         response = await fetch("/api/ingestion/s3", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sourceUri: context.sourceUri }),
         });
-      } else if (context.rawJson) {
-        const parsed = safeJsonParse(context.rawJson);
+      } else if (snapshotRawJson) {
+        const parsed = safeJsonParse(snapshotRawJson);
         if (!parsed) {
           throw new Error("Original JSON is no longer available.");
         }
@@ -237,13 +423,31 @@ export default function ExtractionPage() {
         throw new Error("No payload available to send to cleansing.");
       }
 
-      const body = await response.json();
+      const payload = await response.json();
+      let storageResult: PersistenceResult | undefined;
+
+      if (response.ok) {
+        storageResult = saveCleansedContext(
+          buildCleansedContextPayload(context.metadata, payload),
+        );
+        if (!storageResult.ok) {
+          console.warn(
+            "Unable to cache cleansed response locally; continuing without snapshot.",
+            storageResult.reason,
+          );
+        }
+      }
+
       setFeedback({
         state: response.ok ? "success" : "error",
         message: response.ok
-          ? "Cleansing pipeline triggered."
-          : body?.error ?? "Backend rejected the request.",
+          ? composeSuccessMessage(storageResult)
+          : payload?.error ?? "Backend rejected the request.",
       });
+
+      if (response.ok) {
+        router.push("/cleansing");
+      }
     } catch (error) {
       setFeedback({
         state: "error",
@@ -280,7 +484,7 @@ export default function ExtractionPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-400">
               Extraction
@@ -289,7 +493,10 @@ export default function ExtractionPage() {
               Review structured content
             </h1>
           </div>
-          <FeedbackPill feedback={feedback} />
+          <div className="flex flex-1 flex-col items-start gap-3 md:flex-row md:items-center md:justify-end">
+            <PipelineTracker current="extraction" />
+            <FeedbackPill feedback={feedback} />
+          </div>
         </div>
       </header>
 
@@ -338,10 +545,28 @@ export default function ExtractionPage() {
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
                 />
               </div>
-              <div className="mt-4 max-h-[420px] overflow-y-auto pr-2">
+              <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-2">
+                {snapshotLoading && context?.snapshotId && (
+                  <div className="rounded-2xl border border-slate-200 bg-white py-6 text-center text-sm text-slate-600">
+                    Loading extracted data snapshot…
+                  </div>
+                )}
+                {!snapshotLoading && snapshotError && context?.snapshotId && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    <p className="font-semibold">Unable to load the cached structure.</p>
+                    <p className="mt-1">{snapshotError}</p>
+                    <button
+                      type="button"
+                      onClick={retrySnapshotFetch}
+                      className="mt-3 rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
+                    >
+                      Retry download
+                    </button>
+                  </div>
+                )}
                 {filteredTree.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
-                    No structure available. Upload a JSON payload first.
+                    Structure preview isn’t available yet. Re-run ingestion if this persists.
                   </div>
                 ) : (
                   <div className="space-y-3">{renderTree(filteredTree)}</div>
@@ -363,8 +588,11 @@ export default function ExtractionPage() {
                   Field
                 </p>
                 <p className="text-sm font-semibold text-slate-900">
-                  {activeNodeId ?? "Select a node"}
+                  {activeNode?.label ?? "Select a node"}
                 </p>
+                {activeNode && (
+                  <p className="text-xs text-slate-500">{activeNode.path}</p>
+                )}
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-400">

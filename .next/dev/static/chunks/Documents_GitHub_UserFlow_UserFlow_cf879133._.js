@@ -333,10 +333,29 @@ const mapLocalContext = (local)=>{
     return {
         metadata: local.metadata,
         status: local.status,
-        items: local.items,
         rawBody: local.rawBody,
-        fallbackReason: local.fallbackReason
+        fallbackReason: local.fallbackReason,
+        cachedItems: normalizeStoredItems(local.items)
     };
+};
+const normalizeStoredItems = (items)=>{
+    if (!Array.isArray(items)) return [];
+    return items.map((item, index)=>{
+        if (!item || typeof item !== "object") return null;
+        const record = item;
+        const field = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$lib$2f$source$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["pickString"])(record.field);
+        const original = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$lib$2f$source$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["pickString"])(record.original);
+        const cleansed = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$lib$2f$source$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["pickString"])(record.cleansed);
+        if (!field && !original && !cleansed) {
+            return null;
+        }
+        return {
+            id: (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$lib$2f$source$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["pickString"])(record.id) ?? `cached-${index}`,
+            field: field ?? `Item ${index + 1}`,
+            original: original ?? null,
+            cleansed: cleansed ?? null
+        };
+    }).filter((row)=>Boolean(row));
 };
 const parseJson = async (response)=>{
     const rawBody = await response.text();
@@ -356,149 +375,6 @@ const parseJson = async (response)=>{
         rawBody: friendlyRaw
     };
 };
-const deriveItems = (items, rawBody)=>{
-    if (Array.isArray(items) && items.length) {
-        return items;
-    }
-    if (typeof rawBody === "string" && rawBody.trim()) {
-        try {
-            const parsed = JSON.parse(rawBody);
-            if (Array.isArray(parsed)) return parsed;
-            if (parsed && typeof parsed === "object") {
-                const source = parsed;
-                const candidateKeys = [
-                    "items",
-                    "records",
-                    "data",
-                    "payload",
-                    "cleansedItems",
-                    "originalItems",
-                    "result",
-                    "body"
-                ];
-                const pickArray = (record)=>{
-                    for (const key of candidateKeys){
-                        const candidate = record[key];
-                        if (Array.isArray(candidate)) {
-                            return candidate;
-                        }
-                        if (candidate && typeof candidate === "object") {
-                            const nested = candidate;
-                            if (Array.isArray(nested.items)) {
-                                return nested.items;
-                            }
-                        }
-                    }
-                    return [];
-                };
-                const derived = pickArray(source);
-                if (derived.length) {
-                    return derived;
-                }
-            }
-        } catch  {
-        // ignore parse errors
-        }
-    }
-    return [];
-};
-const getFirstValue = (payload, keys)=>{
-    for (const key of keys){
-        const value = payload[key];
-        if (value !== undefined && value !== null && !(typeof value === "string" && value.trim().length === 0)) {
-            return value;
-        }
-    }
-    return undefined;
-};
-const formatValue = (value)=>{
-    if (value === undefined) return "—";
-    if (value === null) return "null";
-    if (typeof value === "string") return value;
-    if (typeof value === "number" || typeof value === "boolean") return String(value);
-    return JSON.stringify(value, null, 2);
-};
-const isDisplayable = (value)=>{
-    if (value === undefined || value === null) return false;
-    if (typeof value === "string") return value.trim().length > 0;
-    if (typeof value === "number" || typeof value === "boolean") return true;
-    return false;
-};
-const pickValueFromPayload = (payload, preferredKeys, explicitKey)=>{
-    const normalizedKey = explicitKey?.split(".").pop()?.replace(/\[[0-9]+\]/g, "")?.trim();
-    const searchKeys = [
-        normalizedKey,
-        ...preferredKeys,
-        ...FALLBACK_VALUE_KEYS
-    ].filter((key)=>Boolean(key));
-    const tryGet = (source)=>{
-        for (const key of searchKeys){
-            const candidate = source[key];
-            if (isDisplayable(candidate) && !(typeof candidate === "string" && candidate.trim() === key.trim())) {
-                return candidate;
-            }
-        }
-        return undefined;
-    };
-    const direct = tryGet(payload);
-    if (direct !== undefined) {
-        return direct;
-    }
-    if (payload.context && typeof payload.context === "object") {
-        return tryGet(payload.context);
-    }
-    return undefined;
-};
-const normalizeLabel = (rawLabel, fallback)=>{
-    if (!rawLabel) return fallback;
-    const withoutRef = rawLabel.split("::ref::").pop()?.trim() ?? rawLabel;
-    const cleaned = withoutRef.replace(/\s+/g, " ").trim();
-    const segments = cleaned.split(/[./]/).filter(Boolean);
-    const candidate = segments[segments.length - 1] ?? cleaned;
-    const withoutIndex = candidate.replace(/\[[0-9]+\]/g, "");
-    return withoutIndex || fallback;
-};
-const VALUE_LABEL_KEYS = [
-    "originalFieldName",
-    "fieldName",
-    "field",
-    "label",
-    "key",
-    "name",
-    "itemType"
-];
-const ORIGINAL_VALUE_KEYS = [
-    "originalValue",
-    "rawValue",
-    "sourceValue",
-    "before",
-    "input",
-    "valueBefore",
-    "value",
-    "copy",
-    "text",
-    "content"
-];
-const CLEANSED_VALUE_KEYS = [
-    "cleansedValue",
-    "cleanedValue",
-    "normalizedValue",
-    "after",
-    "output",
-    "valueAfter",
-    "value",
-    "cleansedCopy",
-    "cleansedContent",
-    "text"
-];
-const FALLBACK_VALUE_KEYS = [
-    "copy",
-    "text",
-    "value",
-    "content",
-    "body",
-    "stringValue"
-];
 const pickNumber = (value)=>{
     if (typeof value === "number" && Number.isFinite(value)) {
         return value;
@@ -552,7 +428,7 @@ const FeedbackPill = ({ feedback })=>{
         children: feedback.state === "loading" ? "Triggering enrichment…" : feedback.message ?? (feedback.state === "success" ? "Enrichment triggered." : "Something went wrong.")
     }, void 0, false, {
         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-        lineNumber: 326,
+        lineNumber: 191,
         columnNumber: 5
     }, ("TURBOPACK compile-time value", void 0));
 };
@@ -564,7 +440,7 @@ function CleansingPage() {
     const queryId = searchParams.get("id");
     const localSnapshot = mapLocalContext((0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$lib$2f$extraction$2d$context$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["loadCleansedContext"])());
     const [context, setContext] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(localSnapshot);
-    const [items, setItems] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(deriveItems(localSnapshot?.items, localSnapshot?.rawBody));
+    const [items, setItems] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(localSnapshot?.cachedItems ?? []);
     const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(!localSnapshot);
     const [error, setError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [enrichmentFeedback, setEnrichmentFeedback] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({
@@ -606,35 +482,11 @@ function CleansingPage() {
                 throw new Error(body?.error ?? rawBody ?? "Backend rejected the items request.");
             }
             const payloadRecord = body ?? {};
-            const candidateKeys = [
-                "items",
-                "records",
-                "data",
-                "payload",
-                "cleansedItems",
-                "result",
-                "body"
-            ];
-            const pickArrayFromRecord = (record)=>{
-                for (const key of candidateKeys){
-                    const candidate = record[key];
-                    if (Array.isArray(candidate)) {
-                        return candidate;
-                    }
-                    if (candidate && typeof candidate === "object" && Array.isArray(candidate.items)) {
-                        return candidate.items;
-                    }
-                }
-                return [];
-            };
-            let normalized = pickArrayFromRecord(payloadRecord);
-            if (!normalized.length && typeof payloadRecord.body === "object" && payloadRecord.body) {
-                normalized = pickArrayFromRecord(payloadRecord.body);
-            }
+            const normalized = Array.isArray(payloadRecord.items) ? payloadRecord.items : [];
             setItems(normalized);
             setContext((previous)=>previous ? {
                     ...previous,
-                    items: normalized,
+                    cachedItems: normalized,
                     rawBody: typeof body?.rawBody === "string" ? body.rawBody : previous.rawBody
                 } : previous);
         } catch (itemsErr) {
@@ -653,7 +505,7 @@ function CleansingPage() {
                         setLoading(false);
                         setError("Provide a cleansed ID via the URL or trigger a new run.");
                         setContext(localSnapshot);
-                        setItems(deriveItems(localSnapshot?.items, localSnapshot?.rawBody));
+                        setItems(localSnapshot?.cachedItems ?? []);
                         return;
                     }
                     setLoading(true);
@@ -677,21 +529,21 @@ function CleansingPage() {
                         const remoteContext = {
                             metadata: remoteMetadata,
                             status: (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$lib$2f$source$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["pickString"])(backendRecord?.status) ?? localSnapshot?.status,
-                            items: Array.isArray(backendRecord?.items) ? backendRecord?.items : undefined,
                             rawBody: proxiedRawBody,
                             fallbackReason: (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$lib$2f$source$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["pickString"])(proxyPayload.fallbackReason) ?? (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$lib$2f$source$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["pickString"])(backendRecord?.fallbackReason) ?? localSnapshot?.fallbackReason
                         };
                         setContext(remoteContext);
-                        const derived = deriveItems(remoteContext.items, remoteContext.rawBody);
-                        setItems(derived);
+                        if (remoteContext.cachedItems?.length) {
+                            setItems(remoteContext.cachedItems);
+                        }
                         await fetchItems(id, {
-                            showSpinner: derived.length === 0
+                            showSpinner: !remoteContext.cachedItems?.length
                         });
                     } catch (contextError) {
                         setError(contextError instanceof Error ? contextError.message : "Unable to load cleansed context.");
                         if (localSnapshot) {
                             setContext(localSnapshot);
-                            setItems(deriveItems(localSnapshot.items, localSnapshot.rawBody));
+                            setItems(localSnapshot.cachedItems ?? []);
                         } else {
                             setContext(null);
                             setItems([]);
@@ -706,35 +558,6 @@ function CleansingPage() {
         }
     }["CleansingPage.useEffect"], [
         activeId
-    ]);
-    const previewRows = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMemo"])({
-        "CleansingPage.useMemo[previewRows]": ()=>{
-            return items.map({
-                "CleansingPage.useMemo[previewRows]": (item, index)=>{
-                    if (typeof item === "object" && item !== null) {
-                        const payload = item;
-                        const rawLabel = payload.originalFieldName ?? payload.fieldName ?? payload.field ?? payload.label ?? payload.itemType;
-                        const derivedLabel = normalizeLabel(rawLabel, `Item ${index + 1}`);
-                        const originalCandidate = pickValueFromPayload(payload, ORIGINAL_VALUE_KEYS, rawLabel) ?? pickValueFromPayload(payload.context ?? {}, ORIGINAL_VALUE_KEYS, rawLabel);
-                        const cleansedCandidate = pickValueFromPayload(payload, CLEANSED_VALUE_KEYS, rawLabel) ?? pickValueFromPayload(payload.context ?? {}, CLEANSED_VALUE_KEYS, rawLabel);
-                        return {
-                            id: payload.id ?? `${derivedLabel}-${index}`,
-                            label: derivedLabel,
-                            original: formatValue(originalCandidate),
-                            cleansed: formatValue(cleansedCandidate)
-                        };
-                    }
-                    return {
-                        id: `item-${index}`,
-                        label: `Item ${index + 1}`,
-                        original: formatValue(item),
-                        cleansed: formatValue(item)
-                    };
-                }
-            }["CleansingPage.useMemo[previewRows]"]);
-        }
-    }["CleansingPage.useMemo[previewRows]"], [
-        items
     ]);
     const handleSendToEnrichment = async ()=>{
         if (!context?.metadata.cleansedId) {
@@ -804,7 +627,7 @@ function CleansingPage() {
                         children: "Cleansing"
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 597,
+                        lineNumber: 397,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -812,7 +635,7 @@ function CleansingPage() {
                         children: "Loading context…"
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 598,
+                        lineNumber: 398,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -820,18 +643,18 @@ function CleansingPage() {
                         children: "Fetching cleansed snapshot from the backend. One moment please."
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 599,
+                        lineNumber: 399,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                lineNumber: 596,
+                lineNumber: 396,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-            lineNumber: 595,
+            lineNumber: 395,
             columnNumber: 7
         }, this);
     }
@@ -846,7 +669,7 @@ function CleansingPage() {
                         children: "Cleansing"
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 611,
+                        lineNumber: 411,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -854,7 +677,7 @@ function CleansingPage() {
                         children: error ?? "Cleansed context not found"
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 612,
+                        lineNumber: 412,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -862,7 +685,7 @@ function CleansingPage() {
                         children: "Provide a valid `id` query parameter or trigger the pipeline again."
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 615,
+                        lineNumber: 415,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -872,18 +695,18 @@ function CleansingPage() {
                         children: "Back to Extraction"
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 618,
+                        lineNumber: 418,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                lineNumber: 610,
+                lineNumber: 410,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-            lineNumber: 609,
+            lineNumber: 409,
             columnNumber: 7
         }, this);
     }
@@ -904,7 +727,7 @@ function CleansingPage() {
                                     children: "Cleansing"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                    lineNumber: 641,
+                                    lineNumber: 441,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -916,13 +739,13 @@ function CleansingPage() {
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                    lineNumber: 642,
+                                    lineNumber: 442,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                            lineNumber: 640,
+                            lineNumber: 440,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -932,31 +755,31 @@ function CleansingPage() {
                                     current: "cleansing"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                    lineNumber: 647,
+                                    lineNumber: 447,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(FeedbackPill, {
                                     feedback: enrichmentFeedback
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                    lineNumber: 648,
+                                    lineNumber: 448,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                            lineNumber: 646,
+                            lineNumber: 446,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                    lineNumber: 639,
+                    lineNumber: 439,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                lineNumber: 638,
+                lineNumber: 438,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
@@ -975,7 +798,7 @@ function CleansingPage() {
                                                 children: "Status"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 657,
+                                                lineNumber: 457,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -983,13 +806,13 @@ function CleansingPage() {
                                                 children: context.status ?? "Pending"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 658,
+                                                lineNumber: 458,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                        lineNumber: 656,
+                                        lineNumber: 456,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -999,7 +822,7 @@ function CleansingPage() {
                                                 children: "Uploaded"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 663,
+                                                lineNumber: 463,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1007,19 +830,19 @@ function CleansingPage() {
                                                 children: new Date(context.metadata.uploadedAt).toLocaleString()
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 664,
+                                                lineNumber: 464,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                        lineNumber: 662,
+                                        lineNumber: 462,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                lineNumber: 655,
+                                lineNumber: 455,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1032,7 +855,7 @@ function CleansingPage() {
                                                 children: "Cleansed ID"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 671,
+                                                lineNumber: 471,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
@@ -1040,13 +863,13 @@ function CleansingPage() {
                                                 children: context.metadata.cleansedId ?? "—"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 674,
+                                                lineNumber: 474,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                        lineNumber: 670,
+                                        lineNumber: 470,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1056,7 +879,7 @@ function CleansingPage() {
                                                 children: "Source"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 679,
+                                                lineNumber: 479,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
@@ -1064,13 +887,13 @@ function CleansingPage() {
                                                 children: sourceLabel
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 680,
+                                                lineNumber: 480,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                        lineNumber: 678,
+                                        lineNumber: 478,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1080,7 +903,7 @@ function CleansingPage() {
                                                 children: "Source identifier"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 683,
+                                                lineNumber: 483,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
@@ -1088,13 +911,13 @@ function CleansingPage() {
                                                 children: sourceIdentifier
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 684,
+                                                lineNumber: 484,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                        lineNumber: 682,
+                                        lineNumber: 482,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1104,7 +927,7 @@ function CleansingPage() {
                                                 children: "Cache status"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 689,
+                                                lineNumber: 489,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
@@ -1112,25 +935,25 @@ function CleansingPage() {
                                                 children: context.fallbackReason === "quota" ? "Partial snapshot" : "Complete snapshot"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 690,
+                                                lineNumber: 490,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                        lineNumber: 688,
+                                        lineNumber: 488,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                lineNumber: 669,
+                                lineNumber: 469,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 654,
+                        lineNumber: 454,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -1145,7 +968,7 @@ function CleansingPage() {
                                             children: "Items"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                            lineNumber: 700,
+                                            lineNumber: 500,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -1153,18 +976,18 @@ function CleansingPage() {
                                             children: "Original vs Cleansed values"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                            lineNumber: 701,
+                                            lineNumber: 501,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                    lineNumber: 699,
+                                    lineNumber: 499,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                lineNumber: 698,
+                                lineNumber: 498,
                                 columnNumber: 11
                             }, this),
                             itemsLoading ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1172,7 +995,7 @@ function CleansingPage() {
                                 children: "Fetching latest cleansed rows…"
                             }, void 0, false, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                lineNumber: 708,
+                                lineNumber: 508,
                                 columnNumber: 13
                             }, this) : itemsError ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900",
@@ -1182,7 +1005,7 @@ function CleansingPage() {
                                         children: "Unable to load cleansed items."
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                        lineNumber: 713,
+                                        lineNumber: 513,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1190,7 +1013,7 @@ function CleansingPage() {
                                         children: itemsError
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                        lineNumber: 714,
+                                        lineNumber: 514,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1200,20 +1023,20 @@ function CleansingPage() {
                                         children: "Retry fetch"
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                        lineNumber: 715,
+                                        lineNumber: 515,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                lineNumber: 712,
+                                lineNumber: 512,
                                 columnNumber: 13
-                            }, this) : previewRows.length === 0 ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            }, this) : items.length === 0 ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "mt-4 rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500",
                                 children: "No cleansed items available yet."
                             }, void 0, false, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                lineNumber: 724,
+                                lineNumber: 524,
                                 columnNumber: 13
                             }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "mt-4 rounded-2xl border border-slate-100",
@@ -1231,7 +1054,7 @@ function CleansingPage() {
                                                             children: "Field"
                                                         }, void 0, false, {
                                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                            lineNumber: 733,
+                                                            lineNumber: 533,
                                                             columnNumber: 21
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -1239,7 +1062,7 @@ function CleansingPage() {
                                                             children: "Original value"
                                                         }, void 0, false, {
                                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                            lineNumber: 734,
+                                                            lineNumber: 534,
                                                             columnNumber: 21
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -1247,93 +1070,93 @@ function CleansingPage() {
                                                             children: "Cleansed value"
                                                         }, void 0, false, {
                                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                            lineNumber: 735,
+                                                            lineNumber: 535,
                                                             columnNumber: 21
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                    lineNumber: 732,
+                                                    lineNumber: 532,
                                                     columnNumber: 19
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 731,
+                                                lineNumber: 531,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tbody", {
                                                 className: "divide-y divide-slate-100 bg-white",
-                                                children: previewRows.map((row)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
+                                                children: items.map((row)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
                                                         children: [
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
                                                                 className: "px-4 py-3 align-top font-semibold text-slate-900",
-                                                                children: row.label
+                                                                children: row.field
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                                lineNumber: 741,
+                                                                lineNumber: 541,
                                                                 columnNumber: 23
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
                                                                 className: "px-4 py-3 align-top text-slate-700",
                                                                 children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("pre", {
                                                                     className: "whitespace-pre-wrap text-xs",
-                                                                    children: row.original
+                                                                    children: row.original ?? "—"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                                    lineNumber: 745,
+                                                                    lineNumber: 545,
                                                                     columnNumber: 25
                                                                 }, this)
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                                lineNumber: 744,
+                                                                lineNumber: 544,
                                                                 columnNumber: 23
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
                                                                 className: "px-4 py-3 align-top text-slate-700",
                                                                 children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("pre", {
                                                                     className: "whitespace-pre-wrap text-xs",
-                                                                    children: row.cleansed
+                                                                    children: row.cleansed ?? "—"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                                    lineNumber: 748,
+                                                                    lineNumber: 550,
                                                                     columnNumber: 25
                                                                 }, this)
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                                lineNumber: 747,
+                                                                lineNumber: 549,
                                                                 columnNumber: 23
                                                             }, this)
                                                         ]
                                                     }, row.id, true, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                        lineNumber: 740,
+                                                        lineNumber: 540,
                                                         columnNumber: 21
                                                     }, this))
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                lineNumber: 738,
+                                                lineNumber: 538,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                        lineNumber: 730,
+                                        lineNumber: 530,
                                         columnNumber: 15
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                    lineNumber: 729,
+                                    lineNumber: 529,
                                     columnNumber: 15
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                lineNumber: 728,
+                                lineNumber: 528,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 697,
+                        lineNumber: 497,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -1348,7 +1171,7 @@ function CleansingPage() {
                                             children: "Applied rules"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                            lineNumber: 762,
+                                            lineNumber: 566,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -1356,13 +1179,13 @@ function CleansingPage() {
                                             children: "Cleansing heuristics snapshot"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                            lineNumber: 763,
+                                            lineNumber: 567,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                    lineNumber: 761,
+                                    lineNumber: 565,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1375,7 +1198,7 @@ function CleansingPage() {
                                                     children: rule.title
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                    lineNumber: 773,
+                                                    lineNumber: 577,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1383,29 +1206,29 @@ function CleansingPage() {
                                                     children: rule.description
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                                    lineNumber: 774,
+                                                    lineNumber: 578,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, rule.title, true, {
                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                            lineNumber: 769,
+                                            lineNumber: 573,
                                             columnNumber: 17
                                         }, this))
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                    lineNumber: 767,
+                                    lineNumber: 571,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                            lineNumber: 760,
+                            lineNumber: 564,
                             columnNumber: 11
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 759,
+                        lineNumber: 563,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -1420,7 +1243,7 @@ function CleansingPage() {
                                             children: "Next steps"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                            lineNumber: 784,
+                                            lineNumber: 588,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -1428,13 +1251,13 @@ function CleansingPage() {
                                             children: "Ready to send for enrichment?"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                            lineNumber: 785,
+                                            lineNumber: 589,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                    lineNumber: 783,
+                                    lineNumber: 587,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1447,7 +1270,7 @@ function CleansingPage() {
                                             children: "Back to Extraction"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                            lineNumber: 790,
+                                            lineNumber: 594,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1458,7 +1281,7 @@ function CleansingPage() {
                                             children: enrichmentFeedback.state === "loading" ? "Sending to Enrichment…" : "Send to Enrichment"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                            lineNumber: 797,
+                                            lineNumber: 601,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1471,40 +1294,40 @@ function CleansingPage() {
                                             children: "Start Over"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                            lineNumber: 807,
+                                            lineNumber: 611,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                                    lineNumber: 789,
+                                    lineNumber: 593,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                            lineNumber: 782,
+                            lineNumber: 586,
                             columnNumber: 11
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                        lineNumber: 781,
+                        lineNumber: 585,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-                lineNumber: 653,
+                lineNumber: 453,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/cleansing/page.tsx",
-        lineNumber: 637,
+        lineNumber: 437,
         columnNumber: 5
     }, this);
 }
-_s(CleansingPage, "vNKvuH1+89N33HT2LYNF4UGI9+A=", false, function() {
+_s(CleansingPage, "J1FIaKHhtwN5v1VK9urk7yZcFWI=", false, function() {
     return [
         __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"],
         __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useSearchParams"]

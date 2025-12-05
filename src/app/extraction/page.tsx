@@ -126,11 +126,25 @@ const extractItemsFromBackend = (payload: unknown): unknown[] => {
       payload.records,
       payload.data,
       payload.payload,
+      payload.cleansedItems,
+      payload.originalItems,
+      payload.result,
+      payload.body,
+      payload.cleansedItems,
+      payload.originalItems,
+      payload.result,
+      payload.body,
     ];
 
     for (const candidate of candidates) {
       if (Array.isArray(candidate)) {
         return candidate;
+      }
+      if (candidate && typeof candidate === "object") {
+        const record = candidate as Record<string, unknown>;
+        if (Array.isArray(record.items)) {
+          return record.items as unknown[];
+        }
       }
     }
   }

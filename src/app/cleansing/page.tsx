@@ -67,21 +67,48 @@ const deriveItems = (items?: unknown[], rawBody?: string): unknown[] => {
   if (Array.isArray(items) && items.length) {
     return items;
   }
+
   if (typeof rawBody === "string" && rawBody.trim()) {
     try {
       const parsed = JSON.parse(rawBody);
       if (Array.isArray(parsed)) return parsed;
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        Array.isArray((parsed as Record<string, unknown>).items)
-      ) {
-        return (parsed as Record<string, unknown>).items as unknown[];
+      if (parsed && typeof parsed === "object") {
+        const source = parsed as Record<string, unknown>;
+        const candidateKeys = [
+          "items",
+          "records",
+          "data",
+          "payload",
+          "cleansedItems",
+          "originalItems",
+          "result",
+          "body",
+        ];
+        const pickArray = (record: Record<string, unknown>): unknown[] => {
+          for (const key of candidateKeys) {
+            const candidate = record[key];
+            if (Array.isArray(candidate)) {
+              return candidate as unknown[];
+            }
+            if (candidate && typeof candidate === "object") {
+              const nested = candidate as Record<string, unknown>;
+              if (Array.isArray(nested.items)) {
+                return nested.items as unknown[];
+              }
+            }
+          }
+          return [];
+        };
+        const derived = pickArray(source);
+        if (derived.length) {
+          return derived;
+        }
       }
     } catch {
       // ignore parse errors
     }
   }
+
   return [];
 };
 
@@ -263,9 +290,32 @@ export default function CleansingPage() {
             "Backend rejected the items request.",
         );
       }
-      const normalized = Array.isArray((body as Record<string, unknown>)?.items)
-        ? ((body as Record<string, unknown>).items as unknown[])
-        : [];
+      const payloadRecord = (body as Record<string, unknown>) ?? {};
+      const candidateKeys = [
+        "items",
+        "records",
+        "data",
+        "payload",
+        "cleansedItems",
+        "result",
+        "body",
+      ];
+      const pickArrayFromRecord = (record: Record<string, unknown>): unknown[] => {
+        for (const key of candidateKeys) {
+          const candidate = record[key];
+          if (Array.isArray(candidate)) {
+            return candidate as unknown[];
+          }
+          if (candidate && typeof candidate === "object" && Array.isArray((candidate as any).items)) {
+            return (candidate as any).items as unknown[];
+          }
+        }
+        return [];
+      };
+      let normalized = pickArrayFromRecord(payloadRecord);
+      if (!normalized.length && typeof payloadRecord.body === "object" && payloadRecord.body) {
+        normalized = pickArrayFromRecord(payloadRecord.body as Record<string, unknown>);
+      }
       setItems(normalized);
       setContext((previous) =>
         previous

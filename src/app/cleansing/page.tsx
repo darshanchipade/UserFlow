@@ -9,6 +9,7 @@ import {
   type CleansedContext,
 } from "@/lib/extraction-context";
 import { PipelineTracker } from "@/components/PipelineTracker";
+import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
 const RULES = [
   {
@@ -53,33 +54,71 @@ const mapLocalContext = (local: CleansedContext | null): RemoteCleansedContext |
   };
 };
 
+const parseJson = async (response: Response) => {
+  const rawBody = await response.text();
+  const trimmed = rawBody.trim();
+  let body: unknown = null;
+  if (trimmed.length) {
+    try {
+      body = JSON.parse(trimmed);
+    } catch {
+      body = null;
+    }
+  }
+  const looksLikeHtml = trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html");
+  const friendlyRaw =
+    looksLikeHtml && response.status
+      ? `${response.status} ${response.statusText || ""}`.trim() || "HTML response returned."
+      : rawBody;
+  return { body, rawBody: friendlyRaw };
+};
+
 const deriveItems = (items?: unknown[], rawBody?: string): unknown[] => {
   if (Array.isArray(items) && items.length) {
     return items;
   }
-const parseJson = async (response: Response) => {
-  const rawBody = await response.text();
-  try {
-    return { body: JSON.parse(rawBody), rawBody };
-  } catch {
-    return { body: null, rawBody };
-  }
-};
+
   if (typeof rawBody === "string" && rawBody.trim()) {
     try {
       const parsed = JSON.parse(rawBody);
       if (Array.isArray(parsed)) return parsed;
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        Array.isArray((parsed as Record<string, unknown>).items)
-      ) {
-        return (parsed as Record<string, unknown>).items as unknown[];
+      if (parsed && typeof parsed === "object") {
+        const source = parsed as Record<string, unknown>;
+        const candidateKeys = [
+          "items",
+          "records",
+          "data",
+          "payload",
+          "cleansedItems",
+          "originalItems",
+          "result",
+          "body",
+        ];
+        const pickArray = (record: Record<string, unknown>): unknown[] => {
+          for (const key of candidateKeys) {
+            const candidate = record[key];
+            if (Array.isArray(candidate)) {
+              return candidate as unknown[];
+            }
+            if (candidate && typeof candidate === "object") {
+              const nested = candidate as Record<string, unknown>;
+              if (Array.isArray(nested.items)) {
+                return nested.items as unknown[];
+              }
+            }
+          }
+          return [];
+        };
+        const derived = pickArray(source);
+        if (derived.length) {
+          return derived;
+        }
       }
     } catch {
       // ignore parse errors
     }
   }
+
   return [];
 };
 
@@ -124,6 +163,82 @@ const CLEANSED_VALUE_KEYS = [
   "value",
 ];
 
+const pickNumber = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  return undefined;
+};
+
+const buildDefaultMetadata = (
+  id: string,
+  fallback?: CleansedContext["metadata"],
+): CleansedContext["metadata"] => {
+  return (
+    fallback ?? {
+      name: "Unknown dataset",
+      size: 0,
+      source: "Unknown source",
+      uploadedAt: Date.now(),
+      cleansedId: id,
+    }
+  );
+};
+
+const buildMetadataFromBackend = (
+  backend: Record<string, unknown> | null,
+  fallback: CleansedContext["metadata"],
+  id: string,
+): CleansedContext["metadata"] => {
+  if (!backend) return fallback;
+  const metadataRecord =
+    backend.metadata && typeof backend.metadata === "object"
+      ? (backend.metadata as Record<string, unknown>)
+      : null;
+
+  const next: CleansedContext["metadata"] = { ...fallback };
+
+  if (metadataRecord) {
+    next.name = pickString(metadataRecord.name) ?? next.name;
+    next.source = pickString(metadataRecord.source) ?? next.source;
+    next.cleansedId = pickString(metadataRecord.cleansedId) ?? next.cleansedId;
+    next.status = pickString(metadataRecord.status) ?? next.status;
+    next.sourceIdentifier =
+      pickString(metadataRecord.sourceIdentifier) ?? next.sourceIdentifier;
+    next.sourceType = pickString(metadataRecord.sourceType) ?? next.sourceType;
+    const uploadedAtCandidate = pickNumber(metadataRecord.uploadedAt);
+    if (uploadedAtCandidate) {
+      next.uploadedAt = uploadedAtCandidate;
+    }
+    const sizeCandidate = pickNumber(metadataRecord.size);
+    if (sizeCandidate !== undefined) {
+      next.size = sizeCandidate;
+    }
+  }
+
+  const derivedIdentifier =
+    pickString(backend.sourceIdentifier) ??
+    pickString(backend.sourceUri) ??
+    next.sourceIdentifier;
+  const derivedType =
+    inferSourceType(
+      pickString(backend.sourceType),
+      derivedIdentifier ?? next.sourceIdentifier,
+      next.sourceType,
+    ) ?? next.sourceType;
+
+  next.sourceIdentifier = derivedIdentifier ?? next.sourceIdentifier;
+  next.sourceType = derivedType;
+  next.source = describeSourceLabel(derivedType, next.source);
+  next.cleansedId =
+    pickString(backend.cleansedId) ??
+    pickString(backend.cleansedDataStoreId) ??
+    next.cleansedId ??
+    id;
+
+  return next;
+};
+
 const FeedbackPill = ({ feedback }: { feedback: Feedback }) => {
   if (feedback.state === "idle") return null;
   const base =
@@ -164,22 +279,53 @@ export default function CleansingPage() {
     setActiveId(queryId ?? fallbackId);
   }, [queryId, localSnapshot?.metadata.cleansedId]);
 
-  const fetchItems = async (id: string) => {
-    setItemsLoading(true);
+  const fetchItems = async (id: string, options: { showSpinner?: boolean } = {}) => {
+    const { showSpinner = true } = options;
+    if (showSpinner) {
+      setItemsLoading(true);
+    }
     setItemsError(null);
     try {
       const response = await fetch(`/api/ingestion/cleansed-items?id=${encodeURIComponent(id)}`);
       const { body, rawBody } = await parseJson(response);
       if (!response.ok) {
+        if (response.status === 404) {
+          setItems([]);
+          setItemsError("Cleansed rows are not available yet.");
+          return;
+        }
         throw new Error(
           (body as Record<string, unknown>)?.error as string ??
             rawBody ??
             "Backend rejected the items request.",
         );
       }
-      const normalized = Array.isArray((body as Record<string, unknown>)?.items)
-        ? ((body as Record<string, unknown>).items as unknown[])
-        : [];
+      const payloadRecord = (body as Record<string, unknown>) ?? {};
+      const candidateKeys = [
+        "items",
+        "records",
+        "data",
+        "payload",
+        "cleansedItems",
+        "result",
+        "body",
+      ];
+      const pickArrayFromRecord = (record: Record<string, unknown>): unknown[] => {
+        for (const key of candidateKeys) {
+          const candidate = record[key];
+          if (Array.isArray(candidate)) {
+            return candidate as unknown[];
+          }
+          if (candidate && typeof candidate === "object" && Array.isArray((candidate as any).items)) {
+            return (candidate as any).items as unknown[];
+          }
+        }
+        return [];
+      };
+      let normalized = pickArrayFromRecord(payloadRecord);
+      if (!normalized.length && typeof payloadRecord.body === "object" && payloadRecord.body) {
+        normalized = pickArrayFromRecord(payloadRecord.body as Record<string, unknown>);
+      }
       setItems(normalized);
       setContext((previous) =>
         previous
@@ -196,7 +342,9 @@ export default function CleansingPage() {
     } catch (itemsErr) {
       setItemsError(itemsErr instanceof Error ? itemsErr.message : "Unable to fetch cleansed items.");
     } finally {
-      setItemsLoading(false);
+      if (showSpinner) {
+        setItemsLoading(false);
+      }
     }
   };
 
@@ -221,36 +369,33 @@ export default function CleansingPage() {
               "Backend rejected the cleansed context request.",
           );
         }
-        const payloadBody = (body as Record<string, unknown>) ?? {};
+        const proxyPayload = (body as Record<string, unknown>) ?? {};
+        let backendRecord: Record<string, unknown> | null = null;
+        if (proxyPayload.body && typeof proxyPayload.body === "object") {
+          backendRecord = proxyPayload.body as Record<string, unknown>;
+        } else if (!("body" in proxyPayload) && typeof proxyPayload === "object") {
+          backendRecord = proxyPayload;
+        }
+        const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
+        const remoteMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
+        const proxiedRawBody =
+          pickString(proxyPayload.rawBody) ?? (typeof rawBody === "string" ? rawBody : undefined);
         const remoteContext: RemoteCleansedContext = {
-          metadata: (payloadBody.metadata as CleansedContext["metadata"]) ??
-            localSnapshot?.metadata ?? {
-            name: "Unknown dataset",
-            size: 0,
-            source: "unknown",
-            uploadedAt: Date.now(),
-            cleansedId: id,
-          },
-          status:
-            typeof payloadBody.status === "string"
-              ? (payloadBody.status as string)
-              : localSnapshot?.status,
-          items: Array.isArray(payloadBody.items) ? (payloadBody.items as unknown[]) : undefined,
-          rawBody:
-            typeof payloadBody.rawBody === "string"
-              ? (payloadBody.rawBody as string)
-              : undefined,
+          metadata: remoteMetadata,
+          status: pickString(backendRecord?.status) ?? localSnapshot?.status,
+          items: Array.isArray(backendRecord?.items)
+            ? (backendRecord?.items as unknown[])
+            : undefined,
+          rawBody: proxiedRawBody,
           fallbackReason:
-            typeof payloadBody.fallbackReason === "string"
-              ? (payloadBody.fallbackReason as string)
-              : undefined,
+            pickString(proxyPayload.fallbackReason) ??
+            pickString(backendRecord?.fallbackReason) ??
+            localSnapshot?.fallbackReason,
         };
         setContext(remoteContext);
         const derived = deriveItems(remoteContext.items, remoteContext.rawBody);
         setItems(derived);
-        if (!derived.length) {
-          await fetchItems(id);
-        }
+        await fetchItems(id, { showSpinner: derived.length === 0 });
       } catch (contextError) {
         setError(
           contextError instanceof Error ? contextError.message : "Unable to load cleansed context.",
@@ -391,6 +536,12 @@ export default function CleansingPage() {
     );
   }
 
+  const sourceLabel = describeSourceLabel(
+    context.metadata.sourceType ?? context.metadata.source,
+    context.metadata.source,
+  );
+  const sourceIdentifier = context.metadata.sourceIdentifier ?? "—";
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
@@ -435,7 +586,13 @@ export default function CleansingPage() {
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Source</dt>
-              <dd className="text-sm font-semibold text-slate-900">{context.metadata.source}</dd>
+              <dd className="text-sm font-semibold text-slate-900">{sourceLabel}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Source identifier</dt>
+              <dd className="text-sm font-semibold text-slate-900 break-all">
+                {sourceIdentifier}
+              </dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Cache status</dt>

@@ -27,6 +27,7 @@ import {
 import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
 import { readClientSnapshot } from "@/lib/client/snapshot-store";
 import { PipelineTracker } from "@/components/PipelineTracker";
+import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes)) return "—";
@@ -125,11 +126,25 @@ const extractItemsFromBackend = (payload: unknown): unknown[] => {
       payload.records,
       payload.data,
       payload.payload,
+      payload.cleansedItems,
+      payload.originalItems,
+      payload.result,
+      payload.body,
+      payload.cleansedItems,
+      payload.originalItems,
+      payload.result,
+      payload.body,
     ];
 
     for (const candidate of candidates) {
       if (Array.isArray(candidate)) {
         return candidate;
+      }
+      if (candidate && typeof candidate === "object") {
+        const record = candidate as Record<string, unknown>;
+        if (Array.isArray(record.items)) {
+          return record.items as unknown[];
+        }
       }
     }
   }
@@ -152,8 +167,38 @@ const buildCleansedContextPayload = (
   backendResponse: any,
 ) => {
   const body = backendResponse?.body ?? backendResponse;
+  const bodyRecord =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : null;
+  const metadataRecord =
+    bodyRecord?.metadata && typeof bodyRecord.metadata === "object"
+      ? (bodyRecord.metadata as Record<string, unknown>)
+      : null;
+  const sourceIdentifier =
+    pickString(bodyRecord?.sourceIdentifier) ??
+    pickString(bodyRecord?.sourceUri) ??
+    pickString(metadataRecord?.sourceIdentifier) ??
+    metadata.sourceIdentifier;
+  const sourceType =
+    inferSourceType(
+      pickString(bodyRecord?.sourceType) ?? pickString(metadataRecord?.sourceType),
+      sourceIdentifier ?? metadata.sourceIdentifier,
+      metadata.sourceType,
+    ) ?? metadata.sourceType;
+  const cleansedId =
+    pickString(bodyRecord?.cleansedDataStoreId) ??
+    pickString(bodyRecord?.cleansedId) ??
+    metadata.cleansedId;
+  const mergedMetadata: ExtractionContext["metadata"] = {
+    ...metadata,
+    sourceIdentifier: sourceIdentifier ?? metadata.sourceIdentifier,
+    sourceType: sourceType ?? metadata.sourceType,
+    source: describeSourceLabel(sourceType ?? metadata.sourceType, metadata.source),
+    cleansedId: cleansedId ?? metadata.cleansedId,
+  };
   return {
-    metadata,
+    metadata: mergedMetadata,
     items: extractItemsFromBackend(body),
     rawBody: typeof backendResponse?.rawBody === "string" ? backendResponse.rawBody : undefined,
     status: extractStatusFromBackend(body) ?? extractStatusFromBackend(backendResponse),
@@ -175,6 +220,7 @@ const composeSuccessMessage = (storageResult?: PersistenceResult) => {
 
 export default function ExtractionPage() {
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
   const [context, setContext] = useState<ExtractionContext | null>(null);
   const [parsedJson, setParsedJson] = useState<any>(null);
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
@@ -188,6 +234,10 @@ export default function ExtractionPage() {
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [snapshotVersion, setSnapshotVersion] = useState(0);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const applyTreeFromNodes = useCallback((nodes: TreeNode[]) => {
     const flattened = flattenTree(nodes);
@@ -459,6 +509,18 @@ export default function ExtractionPage() {
     }
   };
 
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Extraction</p>
+          <h1 className="mt-3 text-lg font-semibold text-slate-900">Preparing workspace…</h1>
+          <p className="mt-2 text-sm text-slate-500">Loading your latest extraction context.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!context) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -480,6 +542,13 @@ export default function ExtractionPage() {
       </div>
     );
   }
+
+  const sourceLabel = describeSourceLabel(
+    context.metadata.sourceType ?? context.metadata.source,
+    context.metadata.source,
+  );
+  const sourceIdentifier =
+    context.metadata.sourceIdentifier ?? context.metadata.source ?? "—";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -532,7 +601,7 @@ export default function ExtractionPage() {
             </div>
             <div className="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
               <InboxStackIcon className="size-4 text-slate-500" />
-              <span className="font-semibold text-slate-700">{context.metadata.source}</span>
+              <span className="font-semibold text-slate-700">{sourceLabel}</span>
             </div>
             <div className="mt-4">
               <div className="relative">
@@ -634,6 +703,14 @@ export default function ExtractionPage() {
               <dd className="text-sm font-semibold text-slate-900">
                 {formatBytes(context.metadata.size)}
               </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Source type</dt>
+              <dd className="text-sm font-semibold text-slate-900">{sourceLabel}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Source identifier</dt>
+              <dd className="text-sm font-semibold text-slate-900 break-all">{sourceIdentifier}</dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Cleansed ID</dt>

@@ -8,6 +8,7 @@ import {
   type EnrichmentContext,
 } from "@/lib/extraction-context";
 import { PipelineTracker } from "@/components/PipelineTracker";
+import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
 type Feedback = {
   state: "idle" | "loading" | "success" | "error";
@@ -72,6 +73,95 @@ const FALLBACK_HISTORY = [
   { status: "WAITING_FOR_RESULTS", timestamp: Date.now() },
 ] satisfies EnrichmentContext["statusHistory"];
 
+const parseJson = async (response: Response) => {
+  const rawBody = await response.text();
+  const trimmed = rawBody.trim();
+  let body: unknown = null;
+  if (trimmed.length) {
+    try {
+      body = JSON.parse(trimmed);
+    } catch {
+      body = null;
+    }
+  }
+  const looksLikeHtml = trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html");
+  const friendlyRaw =
+    looksLikeHtml && response.status
+      ? `${response.status} ${response.statusText || ""}`.trim() || "HTML response returned."
+      : rawBody;
+  return { body, rawBody: friendlyRaw };
+};
+
+const pickNumber = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  return undefined;
+};
+
+const buildDefaultMetadata = (
+  id: string,
+  fallback?: EnrichmentContext["metadata"],
+): EnrichmentContext["metadata"] => {
+  return (
+    fallback ?? {
+      name: "Unknown dataset",
+      size: 0,
+      source: "Unknown source",
+      uploadedAt: Date.now(),
+      cleansedId: id,
+    }
+  );
+};
+
+const buildMetadataFromBackend = (
+  backend: Record<string, unknown> | null,
+  fallback: EnrichmentContext["metadata"],
+  id: string,
+): EnrichmentContext["metadata"] => {
+  if (!backend) return fallback;
+  const metadataRecord =
+    backend.metadata && typeof backend.metadata === "object"
+      ? (backend.metadata as Record<string, unknown>)
+      : null;
+  const next: EnrichmentContext["metadata"] = { ...fallback };
+  if (metadataRecord) {
+    next.name = pickString(metadataRecord.name) ?? next.name;
+    next.source = pickString(metadataRecord.source) ?? next.source;
+    next.cleansedId = pickString(metadataRecord.cleansedId) ?? next.cleansedId;
+    next.sourceIdentifier =
+      pickString(metadataRecord.sourceIdentifier) ?? next.sourceIdentifier;
+    next.sourceType = pickString(metadataRecord.sourceType) ?? next.sourceType;
+    const uploadedCandidate = pickNumber(metadataRecord.uploadedAt);
+    if (uploadedCandidate) {
+      next.uploadedAt = uploadedCandidate;
+    }
+    const sizeCandidate = pickNumber(metadataRecord.size);
+    if (sizeCandidate !== undefined) {
+      next.size = sizeCandidate;
+    }
+  }
+  const derivedIdentifier =
+    pickString(backend.sourceIdentifier) ??
+    pickString(backend.sourceUri) ??
+    next.sourceIdentifier;
+  const derivedType =
+    inferSourceType(
+      pickString(backend.sourceType),
+      derivedIdentifier ?? next.sourceIdentifier,
+      next.sourceType,
+    ) ?? next.sourceType;
+  next.sourceIdentifier = derivedIdentifier ?? next.sourceIdentifier;
+  next.sourceType = derivedType;
+  next.source = describeSourceLabel(derivedType, next.source);
+  next.cleansedId =
+    pickString(backend.cleansedId) ??
+    pickString(backend.cleansedDataStoreId) ??
+    next.cleansedId ??
+    id;
+  return next;
+};
+
 const mapLocalContext = (local: EnrichmentContext | null): RemoteEnrichmentContext | null => {
   if (!local) return null;
   return {
@@ -83,14 +173,6 @@ const mapLocalContext = (local: EnrichmentContext | null): RemoteEnrichmentConte
 
 const extractSummary = (body: unknown): string => {
   if (typeof body === "string") return body;
-const parseJson = async (response: Response) => {
-  const rawBody = await response.text();
-  try {
-    return { body: JSON.parse(rawBody), rawBody };
-  } catch {
-    return { body: null, rawBody };
-  }
-};
   if (body && typeof body === "object") {
     const source = body as Record<string, unknown>;
     const summaryKeys = ["summary", "aiSummary", "insights", "result", "text", "content"];
@@ -126,35 +208,46 @@ export default function EnrichmentPage() {
     setActiveId(queryId ?? fallbackId);
   }, [queryId, localSnapshot?.metadata.cleansedId]);
 
-  const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> => {
-    const response = await fetch(`/api/ingestion/enrichment/status?id=${encodeURIComponent(id)}`);
-    const { body, rawBody } = await parseJson(response);
-    if (!response.ok) {
-      throw new Error(
-        (body as Record<string, unknown>)?.error as string ??
-          rawBody ??
-          "Backend rejected the enrichment status request.",
-      );
+const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> => {
+  const response = await fetch(`/api/ingestion/enrichment/status?id=${encodeURIComponent(id)}`);
+  const { body, rawBody } = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(
+      (body as Record<string, unknown>)?.error as string ??
+        rawBody ??
+        "Backend rejected the enrichment status request.",
+    );
+  }
+    const proxyPayload = (body as Record<string, unknown>) ?? {};
+    let backendRecord: Record<string, unknown> | null = null;
+    if (proxyPayload.body && typeof proxyPayload.body === "object") {
+      backendRecord = proxyPayload.body as Record<string, unknown>;
+    } else if (!("body" in proxyPayload) && typeof proxyPayload === "object") {
+      backendRecord = proxyPayload;
     }
-    const payloadBody = (body as Record<string, unknown>) ?? {};
+    const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
+    const mergedMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
+    const backendHistory = Array.isArray(
+      backendRecord?.["statusHistory"] as { status: string; timestamp: number }[] | undefined,
+    )
+      ? (backendRecord?.["statusHistory"] as { status: string; timestamp: number }[])
+      : null;
+
     return {
-      metadata: (payloadBody.metadata as EnrichmentContext["metadata"]) ??
-        localSnapshot?.metadata ?? {
-        name: "Unknown dataset",
-        size: 0,
-        source: "unknown",
-        uploadedAt: Date.now(),
-        cleansedId: id,
-      },
-      startedAt: typeof payloadBody.startedAt === "number" ? payloadBody.startedAt : Date.now(),
-      statusHistory:
-        Array.isArray(payloadBody.statusHistory) && payloadBody.statusHistory.length
-          ? (payloadBody.statusHistory as { status: string; timestamp: number }[])
-          : FALLBACK_HISTORY,
+      metadata: mergedMetadata,
+      startedAt:
+        pickNumber(backendRecord?.startedAt) ??
+        pickNumber(proxyPayload.startedAt) ??
+        Date.now(),
+      statusHistory: backendHistory && backendHistory.length ? backendHistory : FALLBACK_HISTORY,
     };
   };
 
-  const loadContext = async (id: string | null, showSpinner = true) => {
+  const loadContext = async (
+    id: string | null,
+    options: { showSpinner?: boolean; rethrowOnError?: boolean } = {},
+  ) => {
+    const { showSpinner = true, rethrowOnError = false } = options;
     if (!id) {
       setLoading(false);
       setError("Provide a cleansed ID via the URL or trigger a new run.");
@@ -176,7 +269,10 @@ export default function EnrichmentPage() {
       } else if (!localSnapshot) {
         setContext(null);
       }
-      throw statusError;
+      if (rethrowOnError) {
+        throw statusError;
+      }
+      return null;
     } finally {
       if (showSpinner) {
         setLoading(false);
@@ -192,13 +288,21 @@ export default function EnrichmentPage() {
       const response = await fetch(`/api/ingestion/enrichment/result?id=${encodeURIComponent(id)}`);
       const { body, rawBody } = await parseJson(response);
       if (!response.ok) {
+        if (response.status === 404) {
+          setSummary(null);
+          setSummaryFeedback({ state: "idle" });
+          return;
+        }
         throw new Error(
           (body as Record<string, unknown>)?.error as string ??
             rawBody ??
             "Backend rejected the enrichment result request.",
         );
       }
-      setSummary(extractSummary(body ?? rawBody));
+      const proxyPayload = (body as Record<string, unknown>) ?? {};
+      const summarySource =
+        proxyPayload.body ?? proxyPayload.rawBody ?? rawBody ?? "Awaiting enrichment results.";
+      setSummary(extractSummary(summarySource));
       setSummaryFeedback({ state: "idle" });
     } catch (summaryError) {
       setSummaryFeedback({
@@ -209,7 +313,7 @@ export default function EnrichmentPage() {
   };
 
   useEffect(() => {
-    loadContext(activeId);
+    loadContext(activeId).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
@@ -256,7 +360,7 @@ export default function EnrichmentPage() {
     }
     setStatusFeedback({ state: "loading" });
     try {
-      await loadContext(activeId, false);
+      await loadContext(activeId, { showSpinner: false, rethrowOnError: true });
       setStatusFeedback({ state: "success", message: "Status refreshed." });
       await fetchSummary(activeId, false);
     } catch (refreshError) {
@@ -303,6 +407,12 @@ export default function EnrichmentPage() {
       </div>
     );
   }
+
+  const sourceLabel = describeSourceLabel(
+    context.metadata.sourceType ?? context.metadata.source,
+    context.metadata.source,
+  );
+  const sourceIdentifier = context.metadata.sourceIdentifier ?? "—";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -377,7 +487,13 @@ export default function EnrichmentPage() {
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Source</p>
-              <p className="text-sm font-semibold text-slate-900">{context.metadata.source}</p>
+              <p className="text-sm font-semibold text-slate-900">{sourceLabel}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Source identifier
+              </p>
+              <p className="text-sm font-semibold text-slate-900 break-all">{sourceIdentifier}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Started at</p>

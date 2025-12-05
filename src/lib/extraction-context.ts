@@ -9,6 +9,8 @@ export type ExtractionContext = {
     cleansedId?: string;
     status?: string;
     uploadedAt: number;
+    sourceIdentifier?: string;
+    sourceType?: string;
   };
   sourceUri?: string;
   snapshotId?: string;

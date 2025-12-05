@@ -1,58 +1,177 @@
 module.exports = [
-"[project]/Documents/GitHub/UserFlow/UserFlow/src/app/page.tsx [app-rsc] (ecmascript)", ((__turbopack_context__) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/module.compiled.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
-/* __next_internal_action_entry_do_not_use__ [{"007e14b47b1879e9e77c6d0c587bf3580c9c355b88":"default"},"",""] */ __turbopack_context__.s([
-    "default",
-    ()=>RootPage
-]);
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$build$2f$webpack$2f$loaders$2f$next$2d$flight$2d$loader$2f$server$2d$reference$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/build/webpack/loaders/next-flight-loader/server-reference.js [app-rsc] (ecmascript)");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$api$2f$navigation$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__$3c$locals$3e$__ = __turbopack_context__.i("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/api/navigation.react-server.js [app-rsc] (ecmascript) <locals>");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$client$2f$components$2f$navigation$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/navigation.react-server.js [app-rsc] (ecmascript)");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$build$2f$webpack$2f$loaders$2f$next$2d$flight$2d$loader$2f$action$2d$validate$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/build/webpack/loaders/next-flight-loader/action-validate.js [app-rsc] (ecmascript)");
+if ("TURBOPACK compile-time falsy", 0) //TURBOPACK unreachable
 ;
-;
-async function RootPage() {
-    (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$client$2f$components$2f$navigation$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["redirect"])("/ingestion");
+else {
+    if ("TURBOPACK compile-time falsy", 0) //TURBOPACK unreachable
+    ;
+    else {
+        if ("TURBOPACK compile-time truthy", 1) {
+            if ("TURBOPACK compile-time truthy", 1) {
+                module.exports = __turbopack_context__.r("[externals]/next/dist/compiled/next-server/app-page-turbo.runtime.dev.js [external] (next/dist/compiled/next-server/app-page-turbo.runtime.dev.js, cjs)");
+            } else //TURBOPACK unreachable
+            ;
+        } else //TURBOPACK unreachable
+        ;
+    }
+} //# sourceMappingURL=module.compiled.js.map
+}),
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/ssr/react-jsx-dev-runtime.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"use strict";
+
+module.exports = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/module.compiled.js [app-ssr] (ecmascript)").vendored['react-ssr'].ReactJsxDevRuntime; //# sourceMappingURL=react-jsx-dev-runtime.js.map
+}),
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/ssr/react.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"use strict";
+
+module.exports = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/module.compiled.js [app-ssr] (ecmascript)").vendored['react-ssr'].React; //# sourceMappingURL=react.js.map
+}),
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/@swc/helpers/cjs/_interop_require_wildcard.cjs [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"use strict";
+
+function _getRequireWildcardCache(nodeInterop) {
+    if (typeof WeakMap !== "function") return null;
+    var cacheBabelInterop = new WeakMap();
+    var cacheNodeInterop = new WeakMap();
+    return (_getRequireWildcardCache = function(nodeInterop) {
+        return nodeInterop ? cacheNodeInterop : cacheBabelInterop;
+    })(nodeInterop);
 }
-;
-(0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$build$2f$webpack$2f$loaders$2f$next$2d$flight$2d$loader$2f$action$2d$validate$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["ensureServerEntryExports"])([
-    RootPage
-]);
-(0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$build$2f$webpack$2f$loaders$2f$next$2d$flight$2d$loader$2f$server$2d$reference$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["registerServerReference"])(RootPage, "007e14b47b1879e9e77c6d0c587bf3580c9c355b88", null);
+function _interop_require_wildcard(obj, nodeInterop) {
+    if (!nodeInterop && obj && obj.__esModule) return obj;
+    if (obj === null || typeof obj !== "object" && typeof obj !== "function") return {
+        default: obj
+    };
+    var cache = _getRequireWildcardCache(nodeInterop);
+    if (cache && cache.has(obj)) return cache.get(obj);
+    var newObj = {
+        __proto__: null
+    };
+    var hasPropertyDescriptor = Object.defineProperty && Object.getOwnPropertyDescriptor;
+    for(var key in obj){
+        if (key !== "default" && Object.prototype.hasOwnProperty.call(obj, key)) {
+            var desc = hasPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : null;
+            if (desc && (desc.get || desc.set)) Object.defineProperty(newObj, key, desc);
+            else newObj[key] = obj[key];
+        }
+    }
+    newObj.default = obj;
+    if (cache) cache.set(obj, newObj);
+    return newObj;
+}
+exports._ = _interop_require_wildcard;
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/Documents/GitHub/UserFlow/UserFlow/src/app/page.tsx [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript) <locals>", ((__turbopack_context__) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/app-router-context.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
-__turbopack_context__.s([]);
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$app$2f$page$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/GitHub/UserFlow/UserFlow/src/app/page.tsx [app-rsc] (ecmascript)");
-;
+module.exports = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/module.compiled.js [app-ssr] (ecmascript)").vendored['contexts'].AppRouterContext; //# sourceMappingURL=app-router-context.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/Documents/GitHub/UserFlow/UserFlow/src/app/page.tsx [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)", ((__turbopack_context__) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/hooks-client-context.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
-__turbopack_context__.s([
-    "007e14b47b1879e9e77c6d0c587bf3580c9c355b88",
-    ()=>__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$app$2f$page$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["default"]
-]);
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f2e$next$2d$internal$2f$server$2f$app$2f$page$2f$actions$2e$js__$7b$__ACTIONS_MODULE0__$3d3e$__$225b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$app$2f$page$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$2922$__$7d$__$5b$app$2d$rsc$5d$__$28$server__actions__loader$2c$__ecmascript$29$__$3c$locals$3e$__ = __turbopack_context__.i('[project]/Documents/GitHub/UserFlow/UserFlow/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/page.tsx [app-rsc] (ecmascript)" } [app-rsc] (server actions loader, ecmascript) <locals>');
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$src$2f$app$2f$page$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/GitHub/UserFlow/UserFlow/src/app/page.tsx [app-rsc] (ecmascript)");
+module.exports = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/module.compiled.js [app-ssr] (ecmascript)").vendored['contexts'].HooksClientContext; //# sourceMappingURL=hooks-client-context.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/build/webpack/loaders/next-flight-loader/server-reference.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/segment.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
-/* eslint-disable import/no-extraneous-dependencies */ Object.defineProperty(exports, "__esModule", {
+Object.defineProperty(exports, "__esModule", {
     value: true
 });
-Object.defineProperty(exports, "registerServerReference", {
-    enumerable: true,
-    get: function() {
-        return _server.registerServerReference;
+0 && (module.exports = {
+    DEFAULT_SEGMENT_KEY: null,
+    PAGE_SEGMENT_KEY: null,
+    addSearchParamsIfPageSegment: null,
+    computeSelectedLayoutSegment: null,
+    getSegmentValue: null,
+    getSelectedLayoutSegmentPath: null,
+    isGroupSegment: null,
+    isParallelRouteSegment: null
+});
+function _export(target, all) {
+    for(var name in all)Object.defineProperty(target, name, {
+        enumerable: true,
+        get: all[name]
+    });
+}
+_export(exports, {
+    DEFAULT_SEGMENT_KEY: function() {
+        return DEFAULT_SEGMENT_KEY;
+    },
+    PAGE_SEGMENT_KEY: function() {
+        return PAGE_SEGMENT_KEY;
+    },
+    addSearchParamsIfPageSegment: function() {
+        return addSearchParamsIfPageSegment;
+    },
+    computeSelectedLayoutSegment: function() {
+        return computeSelectedLayoutSegment;
+    },
+    getSegmentValue: function() {
+        return getSegmentValue;
+    },
+    getSelectedLayoutSegmentPath: function() {
+        return getSelectedLayoutSegmentPath;
+    },
+    isGroupSegment: function() {
+        return isGroupSegment;
+    },
+    isParallelRouteSegment: function() {
+        return isParallelRouteSegment;
     }
 });
-const _server = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/rsc/react-server-dom-turbopack-server.js [app-rsc] (ecmascript)"); //# sourceMappingURL=server-reference.js.map
+function getSegmentValue(segment) {
+    return Array.isArray(segment) ? segment[1] : segment;
+}
+function isGroupSegment(segment) {
+    // Use array[0] for performant purpose
+    return segment[0] === '(' && segment.endsWith(')');
+}
+function isParallelRouteSegment(segment) {
+    return segment.startsWith('@') && segment !== '@children';
+}
+function addSearchParamsIfPageSegment(segment, searchParams) {
+    const isPageSegment = segment.includes(PAGE_SEGMENT_KEY);
+    if (isPageSegment) {
+        const stringifiedQuery = JSON.stringify(searchParams);
+        return stringifiedQuery !== '{}' ? PAGE_SEGMENT_KEY + '?' + stringifiedQuery : PAGE_SEGMENT_KEY;
+    }
+    return segment;
+}
+function computeSelectedLayoutSegment(segments, parallelRouteKey) {
+    if (!segments || segments.length === 0) {
+        return null;
+    }
+    // For 'children', use first segment; for other parallel routes, use last segment
+    const rawSegment = parallelRouteKey === 'children' ? segments[0] : segments[segments.length - 1];
+    // If the default slot is showing, return null since it's not technically "selected" (it's a fallback)
+    // Returning an internal value like `__DEFAULT__` would be confusing
+    return rawSegment === DEFAULT_SEGMENT_KEY ? null : rawSegment;
+}
+function getSelectedLayoutSegmentPath(tree, parallelRouteKey, first = true, segmentPath = []) {
+    let node;
+    if (first) {
+        // Use the provided parallel route key on the first parallel route
+        node = tree[1][parallelRouteKey];
+    } else {
+        // After first parallel route prefer children, if there's no children pick the first parallel route.
+        const parallelRoutes = tree[1];
+        node = parallelRoutes.children ?? Object.values(parallelRoutes)[0];
+    }
+    if (!node) return segmentPath;
+    const segment = node[0];
+    let segmentValue = getSegmentValue(segment);
+    if (!segmentValue || segmentValue.startsWith(PAGE_SEGMENT_KEY)) {
+        return segmentPath;
+    }
+    segmentPath.push(segmentValue);
+    return getSelectedLayoutSegmentPath(node, parallelRouteKey, false, segmentPath);
+}
+const PAGE_SEGMENT_KEY = '__PAGE__';
+const DEFAULT_SEGMENT_KEY = '__DEFAULT__'; //# sourceMappingURL=segment.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/readonly-url-search-params.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/readonly-url-search-params.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 /**
@@ -95,7 +214,53 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=readonly-url-search-params.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-status-code.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/server-inserted-html.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"use strict";
+
+module.exports = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/module.compiled.js [app-ssr] (ecmascript)").vendored['contexts'].ServerInsertedHtml; //# sourceMappingURL=server-inserted-html.js.map
+}),
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unrecognized-action-error.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+0 && (module.exports = {
+    UnrecognizedActionError: null,
+    unstable_isUnrecognizedActionError: null
+});
+function _export(target, all) {
+    for(var name in all)Object.defineProperty(target, name, {
+        enumerable: true,
+        get: all[name]
+    });
+}
+_export(exports, {
+    UnrecognizedActionError: function() {
+        return UnrecognizedActionError;
+    },
+    unstable_isUnrecognizedActionError: function() {
+        return unstable_isUnrecognizedActionError;
+    }
+});
+class UnrecognizedActionError extends Error {
+    constructor(...args){
+        super(...args);
+        this.name = 'UnrecognizedActionError';
+    }
+}
+function unstable_isUnrecognizedActionError(error) {
+    return !!(error && typeof error === 'object' && error instanceof UnrecognizedActionError);
+}
+if ((typeof exports.default === 'function' || typeof exports.default === 'object' && exports.default !== null) && typeof exports.default.__esModule === 'undefined') {
+    Object.defineProperty(exports.default, '__esModule', {
+        value: true
+    });
+    Object.assign(exports.default, exports);
+    module.exports = exports.default;
+} //# sourceMappingURL=unrecognized-action-error.js.map
+}),
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-status-code.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -121,7 +286,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=redirect-status-code.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-error.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-error.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -149,7 +314,7 @@ _export(exports, {
         return isRedirectError;
     }
 });
-const _redirectstatuscode = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-status-code.js [app-rsc] (ecmascript)");
+const _redirectstatuscode = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-status-code.js [app-ssr] (ecmascript)");
 const REDIRECT_ERROR_CODE = 'NEXT_REDIRECT';
 var RedirectType = /*#__PURE__*/ function(RedirectType) {
     RedirectType["push"] = "push";
@@ -175,7 +340,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=redirect-error.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -215,8 +380,8 @@ _export(exports, {
         return redirect;
     }
 });
-const _redirectstatuscode = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-status-code.js [app-rsc] (ecmascript)");
-const _redirecterror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-error.js [app-rsc] (ecmascript)");
+const _redirectstatuscode = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-status-code.js [app-ssr] (ecmascript)");
+const _redirecterror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-error.js [app-ssr] (ecmascript)");
 const actionAsyncStorage = ("TURBOPACK compile-time truthy", 1) ? __turbopack_context__.r("[externals]/next/dist/server/app-render/action-async-storage.external.js [external] (next/dist/server/app-render/action-async-storage.external.js, cjs)").actionAsyncStorage : "TURBOPACK unreachable";
 function getRedirectError(url, type, statusCode = _redirectstatuscode.RedirectStatusCode.TemporaryRedirect) {
     const error = Object.defineProperty(new Error(_redirecterror.REDIRECT_ERROR_CODE), "__NEXT_ERROR_CODE", {
@@ -268,7 +433,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=redirect.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/http-access-fallback/http-access-fallback.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/http-access-fallback/http-access-fallback.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -342,7 +507,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=http-access-fallback.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/not-found.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/not-found.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -354,7 +519,7 @@ Object.defineProperty(exports, "notFound", {
         return notFound;
     }
 });
-const _httpaccessfallback = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/http-access-fallback/http-access-fallback.js [app-rsc] (ecmascript)");
+const _httpaccessfallback = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/http-access-fallback/http-access-fallback.js [app-ssr] (ecmascript)");
 /**
  * This function allows you to render the [not-found.js file](https://nextjs.org/docs/app/api-reference/file-conventions/not-found)
  * within a route segment as well as inject a tag.
@@ -386,7 +551,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=not-found.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/forbidden.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/forbidden.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -398,7 +563,7 @@ Object.defineProperty(exports, "forbidden", {
         return forbidden;
     }
 });
-const _httpaccessfallback = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/http-access-fallback/http-access-fallback.js [app-rsc] (ecmascript)");
+const _httpaccessfallback = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/http-access-fallback/http-access-fallback.js [app-ssr] (ecmascript)");
 // TODO: Add `forbidden` docs
 /**
  * @experimental
@@ -436,7 +601,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=forbidden.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unauthorized.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unauthorized.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -448,7 +613,7 @@ Object.defineProperty(exports, "unauthorized", {
         return unauthorized;
     }
 });
-const _httpaccessfallback = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/http-access-fallback/http-access-fallback.js [app-rsc] (ecmascript)");
+const _httpaccessfallback = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/http-access-fallback/http-access-fallback.js [app-ssr] (ecmascript)");
 // TODO: Add `unauthorized` docs
 /**
  * @experimental
@@ -487,7 +652,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=unauthorized.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/dynamic-rendering-utils.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/dynamic-rendering-utils.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -574,7 +739,7 @@ function makeDevtoolsIOAwarePromise(underlying, requestStore, stage) {
     });
 } //# sourceMappingURL=dynamic-rendering-utils.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/lib/router-utils/is-postpone.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/lib/router-utils/is-postpone.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -591,7 +756,7 @@ function isPostpone(error) {
     return typeof error === 'object' && error !== null && error.$$typeof === REACT_POSTPONE_TYPE;
 } //# sourceMappingURL=is-postpone.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/lazy-dynamic/bailout-to-csr.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/lazy-dynamic/bailout-to-csr.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 // This has to be a shared module which is shared between client component error boundary and dynamic component
@@ -629,7 +794,7 @@ function isBailoutToCSRError(err) {
     return err.digest === BAILOUT_TO_CSR;
 } //# sourceMappingURL=bailout-to-csr.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/is-next-router-error.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/is-next-router-error.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -641,8 +806,8 @@ Object.defineProperty(exports, "isNextRouterError", {
         return isNextRouterError;
     }
 });
-const _httpaccessfallback = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/http-access-fallback/http-access-fallback.js [app-rsc] (ecmascript)");
-const _redirecterror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-error.js [app-rsc] (ecmascript)");
+const _httpaccessfallback = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/http-access-fallback/http-access-fallback.js [app-ssr] (ecmascript)");
+const _redirecterror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-error.js [app-ssr] (ecmascript)");
 function isNextRouterError(error) {
     return (0, _redirecterror.isRedirectError)(error) || (0, _httpaccessfallback.isHTTPAccessFallbackError)(error);
 }
@@ -654,7 +819,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=is-next-router-error.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/hooks-server-context.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/hooks-server-context.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -698,7 +863,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=hooks-server-context.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/static-generation-bailout.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/static-generation-bailout.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -742,7 +907,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=static-generation-bailout.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/lib/framework/boundary-constants.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/lib/framework/boundary-constants.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -779,7 +944,7 @@ const VIEWPORT_BOUNDARY_NAME = '__next_viewport_boundary__';
 const OUTLET_BOUNDARY_NAME = '__next_outlet_boundary__';
 const ROOT_LAYOUT_BOUNDARY_NAME = '__next_root_layout_boundary__'; //# sourceMappingURL=boundary-constants.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/lib/scheduler.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/lib/scheduler.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -844,7 +1009,26 @@ function waitAtLeastOneReactRenderTask() {
     }
 } //# sourceMappingURL=scheduler.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/promise-with-resolvers.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/invariant-error.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+Object.defineProperty(exports, "InvariantError", {
+    enumerable: true,
+    get: function() {
+        return InvariantError;
+    }
+});
+class InvariantError extends Error {
+    constructor(message, options){
+        super(`Invariant: ${message.endsWith('.') ? message : message + '.'} This is a bug in Next.js.`, options);
+        this.name = 'InvariantError';
+    }
+} //# sourceMappingURL=invariant-error.js.map
+}),
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/promise-with-resolvers.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -871,7 +1055,7 @@ function createPromiseWithResolvers() {
     };
 } //# sourceMappingURL=promise-with-resolvers.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/app-render/staged-rendering.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/app-render/staged-rendering.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -895,8 +1079,8 @@ _export(exports, {
         return StagedRenderingController;
     }
 });
-const _invarianterror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/invariant-error.js [app-rsc] (ecmascript)");
-const _promisewithresolvers = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/promise-with-resolvers.js [app-rsc] (ecmascript)");
+const _invarianterror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/invariant-error.js [app-ssr] (ecmascript)");
+const _promisewithresolvers = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/promise-with-resolvers.js [app-ssr] (ecmascript)");
 var RenderStage = /*#__PURE__*/ function(RenderStage) {
     RenderStage[RenderStage["Static"] = 1] = "Static";
     RenderStage[RenderStage["Runtime"] = 2] = "Runtime";
@@ -999,7 +1183,7 @@ function makeDevtoolsIOPromiseFromIOTrigger(ioTrigger, displayName, resolvedValu
     return promise;
 } //# sourceMappingURL=staged-rendering.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/app-render/dynamic-rendering.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/app-render/dynamic-rendering.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 /**
@@ -1139,17 +1323,17 @@ _export(exports, {
         return useDynamicSearchParams;
     }
 });
-const _react = /*#__PURE__*/ _interop_require_default(__turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/rsc/react.js [app-rsc] (ecmascript)"));
-const _hooksservercontext = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/hooks-server-context.js [app-rsc] (ecmascript)");
-const _staticgenerationbailout = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/static-generation-bailout.js [app-rsc] (ecmascript)");
+const _react = /*#__PURE__*/ _interop_require_default(__turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/ssr/react.js [app-ssr] (ecmascript)"));
+const _hooksservercontext = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/hooks-server-context.js [app-ssr] (ecmascript)");
+const _staticgenerationbailout = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/static-generation-bailout.js [app-ssr] (ecmascript)");
 const _workunitasyncstorageexternal = __turbopack_context__.r("[externals]/next/dist/server/app-render/work-unit-async-storage.external.js [external] (next/dist/server/app-render/work-unit-async-storage.external.js, cjs)");
 const _workasyncstorageexternal = __turbopack_context__.r("[externals]/next/dist/server/app-render/work-async-storage.external.js [external] (next/dist/server/app-render/work-async-storage.external.js, cjs)");
-const _dynamicrenderingutils = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/dynamic-rendering-utils.js [app-rsc] (ecmascript)");
-const _boundaryconstants = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/lib/framework/boundary-constants.js [app-rsc] (ecmascript)");
-const _scheduler = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/lib/scheduler.js [app-rsc] (ecmascript)");
-const _bailouttocsr = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/lazy-dynamic/bailout-to-csr.js [app-rsc] (ecmascript)");
-const _invarianterror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/invariant-error.js [app-rsc] (ecmascript)");
-const _stagedrendering = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/app-render/staged-rendering.js [app-rsc] (ecmascript)");
+const _dynamicrenderingutils = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/dynamic-rendering-utils.js [app-ssr] (ecmascript)");
+const _boundaryconstants = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/lib/framework/boundary-constants.js [app-ssr] (ecmascript)");
+const _scheduler = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/lib/scheduler.js [app-ssr] (ecmascript)");
+const _bailouttocsr = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/lazy-dynamic/bailout-to-csr.js [app-ssr] (ecmascript)");
+const _invarianterror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/invariant-error.js [app-ssr] (ecmascript)");
+const _stagedrendering = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/app-render/staged-rendering.js [app-ssr] (ecmascript)");
 function _interop_require_default(obj) {
     return obj && obj.__esModule ? obj : {
         default: obj
@@ -1715,7 +1899,7 @@ function delayUntilRuntimeStage(prerenderStore, result) {
     return result;
 } //# sourceMappingURL=dynamic-rendering.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unstable-rethrow.server.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unstable-rethrow.server.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -1727,12 +1911,12 @@ Object.defineProperty(exports, "unstable_rethrow", {
         return unstable_rethrow;
     }
 });
-const _dynamicrenderingutils = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/dynamic-rendering-utils.js [app-rsc] (ecmascript)");
-const _ispostpone = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/lib/router-utils/is-postpone.js [app-rsc] (ecmascript)");
-const _bailouttocsr = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/lazy-dynamic/bailout-to-csr.js [app-rsc] (ecmascript)");
-const _isnextroutererror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/is-next-router-error.js [app-rsc] (ecmascript)");
-const _dynamicrendering = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/app-render/dynamic-rendering.js [app-rsc] (ecmascript)");
-const _hooksservercontext = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/hooks-server-context.js [app-rsc] (ecmascript)");
+const _dynamicrenderingutils = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/dynamic-rendering-utils.js [app-ssr] (ecmascript)");
+const _ispostpone = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/lib/router-utils/is-postpone.js [app-ssr] (ecmascript)");
+const _bailouttocsr = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/lazy-dynamic/bailout-to-csr.js [app-ssr] (ecmascript)");
+const _isnextroutererror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/is-next-router-error.js [app-ssr] (ecmascript)");
+const _dynamicrendering = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/app-render/dynamic-rendering.js [app-ssr] (ecmascript)");
+const _hooksservercontext = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/hooks-server-context.js [app-ssr] (ecmascript)");
 function unstable_rethrow(error) {
     if ((0, _isnextroutererror.isNextRouterError)(error) || (0, _bailouttocsr.isBailoutToCSRError)(error) || (0, _hooksservercontext.isDynamicServerError)(error) || (0, _dynamicrendering.isDynamicPostpone)(error) || (0, _ispostpone.isPostpone)(error) || (0, _dynamicrenderingutils.isHangingPromiseRejectionError)(error) || (0, _dynamicrendering.isPrerenderInterruptedError)(error)) {
         throw error;
@@ -1749,7 +1933,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=unstable-rethrow.server.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unstable-rethrow.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unstable-rethrow.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 /**
@@ -1767,7 +1951,7 @@ Object.defineProperty(exports, "unstable_rethrow", {
         return unstable_rethrow;
     }
 });
-const unstable_rethrow = ("TURBOPACK compile-time truthy", 1) ? __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unstable-rethrow.server.js [app-rsc] (ecmascript)").unstable_rethrow : "TURBOPACK unreachable";
+const unstable_rethrow = ("TURBOPACK compile-time truthy", 1) ? __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unstable-rethrow.server.js [app-ssr] (ecmascript)").unstable_rethrow : "TURBOPACK unreachable";
 if ((typeof exports.default === 'function' || typeof exports.default === 'object' && exports.default !== null) && typeof exports.default.__esModule === 'undefined') {
     Object.defineProperty(exports.default, '__esModule', {
         value: true
@@ -1776,7 +1960,7 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=unstable-rethrow.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/navigation.react-server.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/navigation.react-server.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -1828,13 +2012,13 @@ _export(exports, {
         return _unstablerethrow.unstable_rethrow;
     }
 });
-const _readonlyurlsearchparams = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/readonly-url-search-params.js [app-rsc] (ecmascript)");
-const _redirect = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect.js [app-rsc] (ecmascript)");
-const _redirecterror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-error.js [app-rsc] (ecmascript)");
-const _notfound = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/not-found.js [app-rsc] (ecmascript)");
-const _forbidden = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/forbidden.js [app-rsc] (ecmascript)");
-const _unauthorized = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unauthorized.js [app-rsc] (ecmascript)");
-const _unstablerethrow = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unstable-rethrow.js [app-rsc] (ecmascript)");
+const _readonlyurlsearchparams = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/readonly-url-search-params.js [app-ssr] (ecmascript)");
+const _redirect = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect.js [app-ssr] (ecmascript)");
+const _redirecterror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/redirect-error.js [app-ssr] (ecmascript)");
+const _notfound = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/not-found.js [app-ssr] (ecmascript)");
+const _forbidden = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/forbidden.js [app-ssr] (ecmascript)");
+const _unauthorized = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unauthorized.js [app-ssr] (ecmascript)");
+const _unstablerethrow = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unstable-rethrow.js [app-ssr] (ecmascript)");
 function unstable_isUnrecognizedActionError() {
     throw Object.defineProperty(new Error('`unstable_isUnrecognizedActionError` can only be used on the client.'), "__NEXT_ERROR_CODE", {
         value: "E776",
@@ -1850,41 +2034,233 @@ if ((typeof exports.default === 'function' || typeof exports.default === 'object
     module.exports = exports.default;
 } //# sourceMappingURL=navigation.react-server.js.map
 }),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/api/navigation.react-server.js [app-rsc] (ecmascript) <locals>", ((__turbopack_context__) => {
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/navigation.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
 "use strict";
 
-__turbopack_context__.s([]);
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$client$2f$components$2f$navigation$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/navigation.react-server.js [app-rsc] (ecmascript)"); //# sourceMappingURL=navigation.react-server.js.map
-;
-}),
-"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/build/webpack/loaders/next-flight-loader/action-validate.js [app-rsc] (ecmascript)", ((__turbopack_context__, module, exports) => {
-"use strict";
-
-// This function ensures that all the exported values are valid server actions,
-// during the runtime. By definition all actions are required to be async
-// functions, but here we can only check that they are functions.
 Object.defineProperty(exports, "__esModule", {
     value: true
 });
-Object.defineProperty(exports, "ensureServerEntryExports", {
-    enumerable: true,
-    get: function() {
-        return ensureServerEntryExports;
+0 && (module.exports = {
+    ReadonlyURLSearchParams: null,
+    RedirectType: null,
+    ServerInsertedHTMLContext: null,
+    forbidden: null,
+    notFound: null,
+    permanentRedirect: null,
+    redirect: null,
+    unauthorized: null,
+    unstable_isUnrecognizedActionError: null,
+    unstable_rethrow: null,
+    useParams: null,
+    usePathname: null,
+    useRouter: null,
+    useSearchParams: null,
+    useSelectedLayoutSegment: null,
+    useSelectedLayoutSegments: null,
+    useServerInsertedHTML: null
+});
+function _export(target, all) {
+    for(var name in all)Object.defineProperty(target, name, {
+        enumerable: true,
+        get: all[name]
+    });
+}
+_export(exports, {
+    ReadonlyURLSearchParams: function() {
+        return _navigationreactserver.ReadonlyURLSearchParams;
+    },
+    RedirectType: function() {
+        return _navigationreactserver.RedirectType;
+    },
+    ServerInsertedHTMLContext: function() {
+        return _serverinsertedhtmlsharedruntime.ServerInsertedHTMLContext;
+    },
+    forbidden: function() {
+        return _navigationreactserver.forbidden;
+    },
+    notFound: function() {
+        return _navigationreactserver.notFound;
+    },
+    permanentRedirect: function() {
+        return _navigationreactserver.permanentRedirect;
+    },
+    redirect: function() {
+        return _navigationreactserver.redirect;
+    },
+    unauthorized: function() {
+        return _navigationreactserver.unauthorized;
+    },
+    unstable_isUnrecognizedActionError: function() {
+        return _unrecognizedactionerror.unstable_isUnrecognizedActionError;
+    },
+    unstable_rethrow: function() {
+        return _navigationreactserver.unstable_rethrow;
+    },
+    useParams: function() {
+        return useParams;
+    },
+    usePathname: function() {
+        return usePathname;
+    },
+    useRouter: function() {
+        return useRouter;
+    },
+    useSearchParams: function() {
+        return useSearchParams;
+    },
+    useSelectedLayoutSegment: function() {
+        return useSelectedLayoutSegment;
+    },
+    useSelectedLayoutSegments: function() {
+        return useSelectedLayoutSegments;
+    },
+    useServerInsertedHTML: function() {
+        return _serverinsertedhtmlsharedruntime.useServerInsertedHTML;
     }
 });
-function ensureServerEntryExports(actions) {
-    for(let i = 0; i < actions.length; i++){
-        const action = actions[i];
-        if (typeof action !== 'function') {
-            throw Object.defineProperty(new Error(`A "use server" file can only export async functions, found ${typeof action}.\nRead more: https://nextjs.org/docs/messages/invalid-use-server-value`), "__NEXT_ERROR_CODE", {
-                value: "E352",
-                enumerable: false,
-                configurable: true
-            });
+const _interop_require_wildcard = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/@swc/helpers/cjs/_interop_require_wildcard.cjs [app-ssr] (ecmascript)");
+const _react = /*#__PURE__*/ _interop_require_wildcard._(__turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/ssr/react.js [app-ssr] (ecmascript)"));
+const _approutercontextsharedruntime = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/app-router-context.js [app-ssr] (ecmascript)");
+const _hooksclientcontextsharedruntime = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/hooks-client-context.js [app-ssr] (ecmascript)");
+const _segment = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/shared/lib/segment.js [app-ssr] (ecmascript)");
+const _readonlyurlsearchparams = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/readonly-url-search-params.js [app-ssr] (ecmascript)");
+const _serverinsertedhtmlsharedruntime = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/server-inserted-html.js [app-ssr] (ecmascript)");
+const _unrecognizedactionerror = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/unrecognized-action-error.js [app-ssr] (ecmascript)");
+const _navigationreactserver = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/navigation.react-server.js [app-ssr] (ecmascript)");
+const useDynamicRouteParams = ("TURBOPACK compile-time truthy", 1) ? __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/app-render/dynamic-rendering.js [app-ssr] (ecmascript)").useDynamicRouteParams : "TURBOPACK unreachable";
+const useDynamicSearchParams = ("TURBOPACK compile-time truthy", 1) ? __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/server/app-render/dynamic-rendering.js [app-ssr] (ecmascript)").useDynamicSearchParams : "TURBOPACK unreachable";
+function useSearchParams() {
+    useDynamicSearchParams?.('useSearchParams()');
+    const searchParams = (0, _react.useContext)(_hooksclientcontextsharedruntime.SearchParamsContext);
+    // In the case where this is `null`, the compat types added in
+    // `next-env.d.ts` will add a new overload that changes the return type to
+    // include `null`.
+    const readonlySearchParams = (0, _react.useMemo)(()=>{
+        if (!searchParams) {
+            // When the router is not ready in pages, we won't have the search params
+            // available.
+            return null;
+        }
+        return new _readonlyurlsearchparams.ReadonlyURLSearchParams(searchParams);
+    }, [
+        searchParams
+    ]);
+    // Instrument with Suspense DevTools (dev-only)
+    if (("TURBOPACK compile-time value", "development") !== 'production' && 'use' in _react.default) {
+        const navigationPromises = (0, _react.use)(_hooksclientcontextsharedruntime.NavigationPromisesContext);
+        if (navigationPromises) {
+            return (0, _react.use)(navigationPromises.searchParams);
         }
     }
-} //# sourceMappingURL=action-validate.js.map
+    return readonlySearchParams;
+}
+function usePathname() {
+    useDynamicRouteParams?.('usePathname()');
+    // In the case where this is `null`, the compat types added in `next-env.d.ts`
+    // will add a new overload that changes the return type to include `null`.
+    const pathname = (0, _react.useContext)(_hooksclientcontextsharedruntime.PathnameContext);
+    // Instrument with Suspense DevTools (dev-only)
+    if (("TURBOPACK compile-time value", "development") !== 'production' && 'use' in _react.default) {
+        const navigationPromises = (0, _react.use)(_hooksclientcontextsharedruntime.NavigationPromisesContext);
+        if (navigationPromises) {
+            return (0, _react.use)(navigationPromises.pathname);
+        }
+    }
+    return pathname;
+}
+function useRouter() {
+    const router = (0, _react.useContext)(_approutercontextsharedruntime.AppRouterContext);
+    if (router === null) {
+        throw Object.defineProperty(new Error('invariant expected app router to be mounted'), "__NEXT_ERROR_CODE", {
+            value: "E238",
+            enumerable: false,
+            configurable: true
+        });
+    }
+    return router;
+}
+function useParams() {
+    useDynamicRouteParams?.('useParams()');
+    const params = (0, _react.useContext)(_hooksclientcontextsharedruntime.PathParamsContext);
+    // Instrument with Suspense DevTools (dev-only)
+    if (("TURBOPACK compile-time value", "development") !== 'production' && 'use' in _react.default) {
+        const navigationPromises = (0, _react.use)(_hooksclientcontextsharedruntime.NavigationPromisesContext);
+        if (navigationPromises) {
+            return (0, _react.use)(navigationPromises.params);
+        }
+    }
+    return params;
+}
+function useSelectedLayoutSegments(parallelRouteKey = 'children') {
+    useDynamicRouteParams?.('useSelectedLayoutSegments()');
+    const context = (0, _react.useContext)(_approutercontextsharedruntime.LayoutRouterContext);
+    // @ts-expect-error This only happens in `pages`. Type is overwritten in navigation.d.ts
+    if (!context) return null;
+    // Instrument with Suspense DevTools (dev-only)
+    if (("TURBOPACK compile-time value", "development") !== 'production' && 'use' in _react.default) {
+        const navigationPromises = (0, _react.use)(_hooksclientcontextsharedruntime.NavigationPromisesContext);
+        if (navigationPromises) {
+            const promise = navigationPromises.selectedLayoutSegmentsPromises?.get(parallelRouteKey);
+            if (promise) {
+                // We should always have a promise here, but if we don't, it's not worth erroring over.
+                // We just won't be able to instrument it, but can still provide the value.
+                return (0, _react.use)(promise);
+            }
+        }
+    }
+    return (0, _segment.getSelectedLayoutSegmentPath)(context.parentTree, parallelRouteKey);
+}
+function useSelectedLayoutSegment(parallelRouteKey = 'children') {
+    useDynamicRouteParams?.('useSelectedLayoutSegment()');
+    const navigationPromises = (0, _react.useContext)(_hooksclientcontextsharedruntime.NavigationPromisesContext);
+    const selectedLayoutSegments = useSelectedLayoutSegments(parallelRouteKey);
+    // Instrument with Suspense DevTools (dev-only)
+    if (("TURBOPACK compile-time value", "development") !== 'production' && navigationPromises && 'use' in _react.default) {
+        const promise = navigationPromises.selectedLayoutSegmentPromises?.get(parallelRouteKey);
+        if (promise) {
+            // We should always have a promise here, but if we don't, it's not worth erroring over.
+            // We just won't be able to instrument it, but can still provide the value.
+            return (0, _react.use)(promise);
+        }
+    }
+    return (0, _segment.computeSelectedLayoutSegment)(selectedLayoutSegments, parallelRouteKey);
+}
+if ((typeof exports.default === 'function' || typeof exports.default === 'object' && exports.default !== null) && typeof exports.default.__esModule === 'undefined') {
+    Object.defineProperty(exports.default, '__esModule', {
+        value: true
+    });
+    Object.assign(exports.default, exports);
+    module.exports = exports.default;
+} //# sourceMappingURL=navigation.js.map
+}),
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/navigation.js [app-ssr] (ecmascript)", ((__turbopack_context__, module, exports) => {
+
+module.exports = __turbopack_context__.r("[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/next/dist/client/components/navigation.js [app-ssr] (ecmascript)");
+}),
+"[project]/Documents/GitHub/UserFlow/UserFlow/node_modules/clsx/dist/clsx.mjs [app-ssr] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "clsx",
+    ()=>clsx,
+    "default",
+    ()=>__TURBOPACK__default__export__
+]);
+function r(e) {
+    var t, f, n = "";
+    if ("string" == typeof e || "number" == typeof e) n += e;
+    else if ("object" == typeof e) if (Array.isArray(e)) {
+        var o = e.length;
+        for(t = 0; t < o; t++)e[t] && (f = r(e[t])) && (n && (n += " "), n += f);
+    } else for(f in e)e[f] && (n && (n += " "), n += f);
+    return n;
+}
+function clsx() {
+    for(var e, t, f = 0, n = "", o = arguments.length; f < o; f++)(e = arguments[f]) && (t = r(e)) && (n && (n += " "), n += t);
+    return n;
+}
+const __TURBOPACK__default__export__ = clsx;
 }),
 ];
 
-//# sourceMappingURL=Documents_GitHub_UserFlow_UserFlow_64cd5f3b._.js.map
+//# sourceMappingURL=dca22_acaaa167._.js.map

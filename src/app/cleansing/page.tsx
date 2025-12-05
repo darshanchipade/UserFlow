@@ -314,9 +314,12 @@ export default function CleansingPage() {
   const [enrichmentFeedback, setEnrichmentFeedback] = useState<Feedback>({ state: "idle" });
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(
-    queryId ?? localSnapshot?.metadata.cleansedId ?? null,
-  );
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   useEffect(() => {
     const fallbackId = localSnapshot?.metadata.cleansedId ?? null;
@@ -547,7 +550,7 @@ export default function CleansingPage() {
     }
   };
 
-  if (loading) {
+  if (loading || !hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-16">
         <div className="max-w-lg rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">

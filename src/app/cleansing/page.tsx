@@ -144,42 +144,41 @@ const formatValue = (value: unknown) => {
   return JSON.stringify(value, null, 2);
 };
 
+const isDisplayable = (value: unknown) => {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number" || typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+  return false;
+};
+
 const pickValueFromPayload = (
   payload: Record<string, unknown>,
   preferredKeys: string[],
+  explicitKey?: string | null,
 ): unknown => {
   for (const key of preferredKeys) {
     const candidate = payload[key];
-    if (
-      candidate !== undefined &&
-      candidate !== null &&
-      (typeof candidate === "string" ||
-        typeof candidate === "number" ||
-        typeof candidate === "boolean")
-    ) {
+    if (isDisplayable(candidate)) {
       return candidate;
     }
+  }
+
+  if (explicitKey && isDisplayable(payload[explicitKey])) {
+    return payload[explicitKey];
   }
 
   for (const key of FALLBACK_VALUE_KEYS) {
     const candidate = payload[key];
-    if (
-      candidate !== undefined &&
-      candidate !== null &&
-      (typeof candidate === "string" ||
-        typeof candidate === "number" ||
-        typeof candidate === "boolean")
-    ) {
+    if (isDisplayable(candidate)) {
       return candidate;
     }
   }
 
-  for (const value of Object.values(payload)) {
-    if (
-      value !== undefined &&
-      value !== null &&
-      (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
-    ) {
+  for (const [key, value] of Object.entries(payload)) {
+    if (key.startsWith("_")) continue;
+    if (isDisplayable(value)) {
       return value;
     }
   }
@@ -187,7 +186,25 @@ const pickValueFromPayload = (
   return undefined;
 };
 
-const VALUE_LABEL_KEYS = ["field", "label", "path", "key", "name", "usagePath"];
+const normalizeLabel = (rawLabel: string | undefined, fallback: string): string => {
+  if (!rawLabel) return fallback;
+  const withoutRef = rawLabel.split("::ref::").pop()?.trim() ?? rawLabel;
+  const cleaned = withoutRef.replace(/\s+/g, " ").trim();
+  const segments = cleaned.split(/[./]/).filter(Boolean);
+  const candidate = segments[segments.length - 1] ?? cleaned;
+  return candidate.replace(/\[[0-9]+\]/g, "") || fallback;
+};
+
+const VALUE_LABEL_KEYS = [
+  "field",
+  "label",
+  "path",
+  "key",
+  "name",
+  "usagePath",
+  "itemType",
+  "originalFieldName",
+];
 const ORIGINAL_VALUE_KEYS = [
   "originalValue",
   "rawValue",
@@ -205,7 +222,15 @@ const CLEANSED_VALUE_KEYS = [
   "valueAfter",
   "value",
 ];
-const FALLBACK_VALUE_KEYS = ["value", "text", "copy", "content", "payload", "cleaned"];
+const FALLBACK_VALUE_KEYS = [
+  "value",
+  "text",
+  "copy",
+  "content",
+  "payload",
+  "cleaned",
+  "items",
+];
 
 const pickNumber = (value: unknown) => {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -469,18 +494,22 @@ export default function CleansingPage() {
     return itemsPreview.map((item, index) => {
       if (typeof item === "object" && item !== null) {
         const payload = item as Record<string, unknown>;
-        const label =
-          (getFirstValue(payload, VALUE_LABEL_KEYS) as string | undefined) ??
-          `Item ${index + 1}`;
+        const rawLabel = getFirstValue(payload, VALUE_LABEL_KEYS) as string | undefined;
+        const derivedLabel = normalizeLabel(
+          rawLabel,
+          (payload.originalFieldName as string | undefined) ??
+            (payload.itemType as string | undefined) ??
+            `Item ${index + 1}`,
+        );
         const originalCandidate =
           getFirstValue(payload, ORIGINAL_VALUE_KEYS) ??
-          pickValueFromPayload(payload, ORIGINAL_VALUE_KEYS);
+          pickValueFromPayload(payload, ORIGINAL_VALUE_KEYS, derivedLabel);
         const cleansedCandidate =
           getFirstValue(payload, CLEANSED_VALUE_KEYS) ??
-          pickValueFromPayload(payload, CLEANSED_VALUE_KEYS);
+          pickValueFromPayload(payload, CLEANSED_VALUE_KEYS, derivedLabel);
         return {
-          id: payload.id ?? `${label}-${index}`,
-          label,
+          id: payload.id ?? `${derivedLabel}-${index}`,
+          label: derivedLabel,
           original: formatValue(originalCandidate),
           cleansed: formatValue(cleansedCandidate),
         };

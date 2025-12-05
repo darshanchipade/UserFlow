@@ -104,7 +104,30 @@ export default function CleansingPage() {
     setContext(loadCleansedContext());
   }, []);
 
-  const itemsPreview = useMemo(() => context?.items?.slice(0, 10) ?? [], [context]);
+  const itemsPreview = useMemo(() => {
+    if (!context) return [];
+    if (Array.isArray(context.items) && context.items.length > 0) {
+      return context.items.slice(0, 10);
+    }
+    if (typeof context.rawBody === "string" && context.rawBody.trim()) {
+      try {
+        const parsed = JSON.parse(context.rawBody);
+        if (Array.isArray(parsed)) {
+          return parsed.slice(0, 10);
+        }
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          Array.isArray((parsed as Record<string, unknown>).items)
+        ) {
+          return ((parsed as Record<string, unknown>).items as unknown[]).slice(0, 10);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    return [];
+  }, [context]);
 
   const previewRows = useMemo(() => {
     return itemsPreview.map((item, index) => {

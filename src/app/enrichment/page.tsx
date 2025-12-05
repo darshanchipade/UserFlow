@@ -307,7 +307,7 @@ export default function EnrichmentPage() {
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Next steps</p>
               <h2 className="text-lg font-semibold text-slate-900">
-                Ready to move to Content QA?
+                Wrap up or keep monitoring
               </h2>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -329,11 +329,11 @@ export default function EnrichmentPage() {
                 type="button"
                 onClick={() => {
                   clearEnrichmentContext();
-                  router.push("/qa");
+                  router.push("/ingestion");
                 }}
                 className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
               >
-                Continue to QA
+                Finish Session
               </button>
             </div>
           </div>

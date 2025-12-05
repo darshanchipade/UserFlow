@@ -239,18 +239,6 @@ export default function ExtractionPage() {
     setHydrated(true);
   }, []);
 
-  if (!hydrated) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Extraction</p>
-          <h1 className="mt-3 text-lg font-semibold text-slate-900">Preparing workspace…</h1>
-          <p className="mt-2 text-sm text-slate-500">Loading your latest extraction context.</p>
-        </div>
-      </div>
-    );
-  }
-
   const applyTreeFromNodes = useCallback((nodes: TreeNode[]) => {
     const flattened = flattenTree(nodes);
     setTreeNodes(nodes);
@@ -520,6 +508,18 @@ export default function ExtractionPage() {
       setSending(false);
     }
   };
+
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Extraction</p>
+          <h1 className="mt-3 text-lg font-semibold text-slate-900">Preparing workspace…</h1>
+          <p className="mt-2 text-sm text-slate-500">Loading your latest extraction context.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!context) {
     return (

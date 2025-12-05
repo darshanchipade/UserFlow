@@ -22,7 +22,10 @@ import {
   filterTree,
   gatherLeafNodes,
 } from "@/lib/tree";
-import { saveExtractionContext } from "@/lib/extraction-context";
+import {
+  saveExtractionContext,
+  type PersistenceResult,
+} from "@/lib/extraction-context";
 
 type UploadTab = "local" | "api" | "s3";
 
@@ -138,6 +141,20 @@ const FeedbackPill = ({ feedback }: { feedback: ApiFeedback }) => {
   if (feedback.state === "idle") {
     return null;
   }
+  const describeExtractionPersistenceError = (result?: PersistenceResult) => {
+    if (!result) {
+      return "Extraction context could not be cached in this browser.";
+    }
+    switch (result.reason) {
+      case "quota":
+        return "Browser storage is full. Clear other extraction tabs or reduce the payload size and try again.";
+      case "ssr":
+        return "Extraction context can only be saved in a browser tab.";
+      default:
+        return "Extraction context could not be cached locally. Check the console for details.";
+    }
+  };
+
 
   const className = clsx(
     "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
@@ -350,7 +367,7 @@ export default function IngestionPage() {
       return;
     }
 
-    saveExtractionContext({
+    const persistenceResult = saveExtractionContext({
       mode: "local",
       metadata: {
         name: localFile.name,
@@ -364,6 +381,15 @@ export default function IngestionPage() {
       rawJson: localFileText ?? undefined,
       backendPayload: payload,
     });
+
+    if (!persistenceResult.ok) {
+      setExtractFeedback({
+        state: "error",
+        message: describeExtractionPersistenceError(persistenceResult),
+      });
+      setExtracting(false);
+      return;
+    }
 
     setExtractFeedback({
       state: "success",
@@ -449,7 +475,7 @@ export default function IngestionPage() {
 
     const previewNodes = seedPreviewTree("API payload", parsed);
 
-    saveExtractionContext({
+    const persistenceResult = saveExtractionContext({
       mode: "api",
       metadata: {
         name: "API payload",
@@ -463,6 +489,15 @@ export default function IngestionPage() {
       rawJson: JSON.stringify(parsed, null, 2),
       backendPayload: payload,
     });
+
+    if (!persistenceResult.ok) {
+      setExtractFeedback({
+        state: "error",
+        message: describeExtractionPersistenceError(persistenceResult),
+      });
+      setExtracting(false);
+      return;
+    }
 
     setExtractFeedback({
       state: "success",
@@ -538,7 +573,7 @@ export default function IngestionPage() {
       return;
     }
 
-    saveExtractionContext({
+    const persistenceResult = saveExtractionContext({
       mode: "s3",
       metadata: {
         name: normalized,
@@ -551,6 +586,15 @@ export default function IngestionPage() {
       sourceUri: normalized,
       backendPayload: payload,
     });
+
+    if (!persistenceResult.ok) {
+      setExtractFeedback({
+        state: "error",
+        message: describeExtractionPersistenceError(persistenceResult),
+      });
+      setExtracting(false);
+      return;
+    }
 
     setExtractFeedback({
       state: "success",

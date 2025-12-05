@@ -24,6 +24,7 @@ import {
 } from "@/lib/tree";
 import {
   saveExtractionContext,
+  type ExtractionContext,
   type PersistenceResult,
 } from "@/lib/extraction-context";
 
@@ -367,19 +368,38 @@ export default function IngestionPage() {
       return;
     }
 
+    const metadata: ExtractionContext["metadata"] = {
+      name: localFile.name,
+      size: localFile.size,
+      source: "Local",
+      cleansedId: details.cleansedId,
+      status: details.status,
+      uploadedAt: Date.now(),
+    };
+    const snapshotId = details.cleansedId ?? uploadId;
+
+    try {
+      await persistSnapshot(snapshotId, {
+        mode: "local",
+        metadata,
+        rawJson: localFileText ?? undefined,
+        tree: treeNodes,
+        backendPayload: payload,
+      });
+    } catch (error) {
+      setExtractFeedback({
+        state: "error",
+        message:
+          error instanceof Error ? error.message : "Unable to cache extraction snapshot.",
+      });
+      setExtracting(false);
+      return;
+    }
+
     const persistenceResult = saveExtractionContext({
       mode: "local",
-      metadata: {
-        name: localFile.name,
-        size: localFile.size,
-        source: "Local",
-        cleansedId: details.cleansedId,
-        status: details.status,
-        uploadedAt: Date.now(),
-      },
-      tree: treeNodes,
-      rawJson: localFileText ?? undefined,
-      backendPayload: payload,
+      metadata,
+      snapshotId,
     });
 
     if (!persistenceResult.ok) {
@@ -475,19 +495,39 @@ export default function IngestionPage() {
 
     const previewNodes = seedPreviewTree("API payload", parsed);
 
+    const metadata: ExtractionContext["metadata"] = {
+      name: "API payload",
+      size: apiPayload.length,
+      source: "API",
+      cleansedId: details.cleansedId,
+      status: details.status,
+      uploadedAt: Date.now(),
+    };
+    const snapshotId = details.cleansedId ?? uploadId;
+    const serializedPayload = JSON.stringify(parsed, null, 2);
+
+    try {
+      await persistSnapshot(snapshotId, {
+        mode: "api",
+        metadata,
+        rawJson: serializedPayload,
+        tree: previewNodes,
+        backendPayload: payload,
+      });
+    } catch (error) {
+      setExtractFeedback({
+        state: "error",
+        message:
+          error instanceof Error ? error.message : "Unable to cache extraction snapshot.",
+      });
+      setExtracting(false);
+      return;
+    }
+
     const persistenceResult = saveExtractionContext({
       mode: "api",
-      metadata: {
-        name: "API payload",
-        size: apiPayload.length,
-        source: "API",
-        cleansedId: details.cleansedId,
-        status: details.status,
-        uploadedAt: Date.now(),
-      },
-      tree: previewNodes,
-      rawJson: JSON.stringify(parsed, null, 2),
-      backendPayload: payload,
+      metadata,
+      snapshotId,
     });
 
     if (!persistenceResult.ok) {
@@ -573,18 +613,38 @@ export default function IngestionPage() {
       return;
     }
 
+    const metadata: ExtractionContext["metadata"] = {
+      name: normalized,
+      size: 0,
+      source: "S3",
+      cleansedId: details.cleansedId,
+      status: details.status,
+      uploadedAt: Date.now(),
+    };
+    const snapshotId = details.cleansedId ?? uploadId;
+
+    try {
+      await persistSnapshot(snapshotId, {
+        mode: "s3",
+        metadata,
+        sourceUri: normalized,
+        backendPayload: payload,
+      });
+    } catch (error) {
+      setExtractFeedback({
+        state: "error",
+        message:
+          error instanceof Error ? error.message : "Unable to cache extraction snapshot.",
+      });
+      setExtracting(false);
+      return;
+    }
+
     const persistenceResult = saveExtractionContext({
       mode: "s3",
-      metadata: {
-        name: normalized,
-        size: 0,
-        source: "S3",
-        cleansedId: details.cleansedId,
-        status: details.status,
-        uploadedAt: Date.now(),
-      },
+      metadata,
       sourceUri: normalized,
-      backendPayload: payload,
+      snapshotId,
     });
 
     if (!persistenceResult.ok) {
@@ -644,6 +704,45 @@ export default function IngestionPage() {
       (typeof rawBody === "string" ? rawBody : undefined);
 
     return { cleansedId, status, message };
+  };
+
+  type SnapshotPayload = {
+    mode: UploadTab;
+    metadata: ExtractionContext["metadata"];
+    rawJson?: string;
+    tree?: TreeNode[];
+    sourceUri?: string;
+    backendPayload?: unknown;
+  };
+
+  const persistSnapshot = async (id: string, payload: SnapshotPayload) => {
+    const response = await fetch("/api/ingestion/context", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id,
+        payload: {
+          ...payload,
+          mode: payload.mode,
+          metadata: payload.metadata,
+          rawJson: payload.rawJson,
+          tree: payload.tree,
+          sourceUri: payload.sourceUri,
+          backendPayload: payload.backendPayload,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      let message = "Failed to cache extraction snapshot.";
+      try {
+        const body = await response.json();
+        if (body?.error) message = body.error;
+      } catch {
+        // ignore
+      }
+      throw new Error(message);
+    }
   };
 
   const toggleNode = (nodeId: string) => {

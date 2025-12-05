@@ -10,10 +10,13 @@ export type ExtractionContext = {
     status?: string;
     uploadedAt: number;
   };
-  tree?: TreeNode[];
-  stagedFileBase64?: string;
-  rawJson?: string;
   sourceUri?: string;
+  snapshotId?: string;
+  /**
+   * @deprecated Legacy fields retained for backwards compatibility.
+   */
+  tree?: TreeNode[];
+  rawJson?: string;
   backendPayload?: unknown;
 };
 

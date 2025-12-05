@@ -4,10 +4,11 @@ export type TreeNode = {
   path: string;
   type: "object" | "array" | "value";
   children?: TreeNode[];
+  value?: unknown;
 };
 
-const MAX_TREE_NODES = 800;
-const MAX_ARRAY_CHILDREN = 12;
+const MAX_TREE_NODES = 5000;
+const MAX_ARRAY_CHILDREN = 100;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -38,6 +39,12 @@ export const buildTreeFromJson = (
               ? "object"
               : "value",
           children: childNodes.length ? childNodes : undefined,
+          value:
+            !Array.isArray(entry) && !isPlainObject(entry)
+              ? entry
+              : childNodes.length === 0
+                ? entry
+                : undefined,
         },
       ];
     });
@@ -60,6 +67,12 @@ export const buildTreeFromJson = (
               ? "object"
               : "value",
           children: childNodes.length ? childNodes : undefined,
+          value:
+            !Array.isArray(value) && !isPlainObject(value)
+              ? value
+              : childNodes.length === 0
+                ? value
+                : undefined,
         },
       ];
     });

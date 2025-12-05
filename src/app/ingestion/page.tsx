@@ -22,7 +22,13 @@ import {
   filterTree,
   gatherLeafNodes,
 } from "@/lib/tree";
-import { saveExtractionContext } from "@/lib/extraction-context";
+import {
+  saveExtractionContext,
+  type ExtractionContext,
+  type PersistenceResult,
+} from "@/lib/extraction-context";
+import { storeClientSnapshot } from "@/lib/client/snapshot-store";
+import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
 
 type UploadTab = "local" | "api" | "s3";
 
@@ -131,6 +137,20 @@ const getFileLabel = (fileName: string) => {
       return { label: "DOC", style: "bg-sky-100 text-sky-700" };
     default:
       return { label: "FILE", style: "bg-slate-100 text-slate-600" };
+  }
+};
+
+const describeExtractionPersistenceError = (result?: PersistenceResult) => {
+  if (!result) {
+    return "Extraction context could not be cached in this browser.";
+  }
+  switch (result.reason) {
+    case "quota":
+      return "Browser storage is full. Clear other extraction tabs or reduce the payload size and try again.";
+    case "ssr":
+      return "Extraction context can only be saved in a browser tab.";
+    default:
+      return "Extraction context could not be cached locally. Check the console for details.";
   }
 };
 
@@ -350,20 +370,53 @@ export default function IngestionPage() {
       return;
     }
 
-    saveExtractionContext({
+    const metadata: ExtractionContext["metadata"] = {
+      name: localFile.name,
+      size: localFile.size,
+      source: "Local",
+      cleansedId: details.cleansedId,
+      status: details.status,
+      uploadedAt: Date.now(),
+    };
+    const snapshotId = details.cleansedId ?? uploadId;
+    let snapshotPersisted = false;
+    let resolvedSnapshotId: string | undefined;
+
+    if (snapshotId) {
+      const result = await persistSnapshot(snapshotId, {
+        mode: "local",
+        metadata,
+        rawJson: localFileText ?? undefined,
+        tree: treeNodes,
+        backendPayload: payload,
+      });
+      snapshotPersisted = result.ok;
+      resolvedSnapshotId = result.snapshotId;
+      if (!result.ok) {
+        console.warn(
+          "Unable to cache extraction snapshot, falling back to session storage.",
+          result.message,
+        );
+      }
+    }
+
+    const persistenceResult = saveExtractionContext({
       mode: "local",
-      metadata: {
-        name: localFile.name,
-        size: localFile.size,
-        source: "Local",
-        cleansedId: details.cleansedId,
-        status: details.status,
-        uploadedAt: Date.now(),
-      },
-      tree: treeNodes,
-      rawJson: localFileText ?? undefined,
-      backendPayload: payload,
+      metadata,
+      snapshotId: snapshotPersisted ? resolvedSnapshotId ?? snapshotId : undefined,
+      tree: snapshotPersisted ? undefined : treeNodes,
+      rawJson: snapshotPersisted ? undefined : localFileText ?? undefined,
+      backendPayload: snapshotPersisted ? undefined : payload,
     });
+
+    if (!persistenceResult.ok) {
+      setExtractFeedback({
+        state: "error",
+        message: describeExtractionPersistenceError(persistenceResult),
+      });
+      setExtracting(false);
+      return;
+    }
 
     setExtractFeedback({
       state: "success",
@@ -449,20 +502,54 @@ export default function IngestionPage() {
 
     const previewNodes = seedPreviewTree("API payload", parsed);
 
-    saveExtractionContext({
+    const metadata: ExtractionContext["metadata"] = {
+      name: "API payload",
+      size: apiPayload.length,
+      source: "API",
+      cleansedId: details.cleansedId,
+      status: details.status,
+      uploadedAt: Date.now(),
+    };
+    const snapshotId = details.cleansedId ?? uploadId;
+    const serializedPayload = JSON.stringify(parsed, null, 2);
+
+    let snapshotPersisted = false;
+    let resolvedSnapshotId: string | undefined;
+    if (snapshotId) {
+      const snapshotResult = await persistSnapshot(snapshotId, {
+        mode: "api",
+        metadata,
+        rawJson: serializedPayload,
+        tree: previewNodes,
+        backendPayload: payload,
+      });
+      snapshotPersisted = snapshotResult.ok;
+      resolvedSnapshotId = snapshotResult.snapshotId;
+      if (!snapshotResult.ok) {
+        console.warn(
+          "Unable to cache API extraction snapshot, falling back to browser session storage.",
+          snapshotResult.message,
+        );
+      }
+    }
+
+    const persistenceResult = saveExtractionContext({
       mode: "api",
-      metadata: {
-        name: "API payload",
-        size: apiPayload.length,
-        source: "API",
-        cleansedId: details.cleansedId,
-        status: details.status,
-        uploadedAt: Date.now(),
-      },
-      tree: previewNodes,
-      rawJson: JSON.stringify(parsed, null, 2),
-      backendPayload: payload,
+      metadata,
+      snapshotId: snapshotPersisted ? resolvedSnapshotId ?? snapshotId : undefined,
+      tree: snapshotPersisted ? undefined : previewNodes,
+      rawJson: snapshotPersisted ? undefined : serializedPayload,
+      backendPayload: snapshotPersisted ? undefined : payload,
     });
+
+    if (!persistenceResult.ok) {
+      setExtractFeedback({
+        state: "error",
+        message: describeExtractionPersistenceError(persistenceResult),
+      });
+      setExtracting(false);
+      return;
+    }
 
     setExtractFeedback({
       state: "success",
@@ -538,19 +625,51 @@ export default function IngestionPage() {
       return;
     }
 
-    saveExtractionContext({
+    const metadata: ExtractionContext["metadata"] = {
+      name: normalized,
+      size: 0,
+      source: "S3",
+      cleansedId: details.cleansedId,
+      status: details.status,
+      uploadedAt: Date.now(),
+    };
+    const snapshotId = details.cleansedId ?? uploadId;
+
+    let snapshotPersisted = false;
+    let resolvedSnapshotId: string | undefined;
+    if (snapshotId) {
+      const snapshotResult = await persistSnapshot(snapshotId, {
+        mode: "s3",
+        metadata,
+        sourceUri: normalized,
+        backendPayload: payload,
+      });
+      snapshotPersisted = snapshotResult.ok;
+      resolvedSnapshotId = snapshotResult.snapshotId;
+      if (!snapshotResult.ok) {
+        console.warn(
+          "Unable to cache S3 extraction snapshot, falling back to session storage metadata only.",
+          snapshotResult.message,
+        );
+      }
+    }
+
+    const persistenceResult = saveExtractionContext({
       mode: "s3",
-      metadata: {
-        name: normalized,
-        size: 0,
-        source: "S3",
-        cleansedId: details.cleansedId,
-        status: details.status,
-        uploadedAt: Date.now(),
-      },
+      metadata,
       sourceUri: normalized,
-      backendPayload: payload,
+      snapshotId: snapshotPersisted ? resolvedSnapshotId ?? snapshotId : undefined,
+      backendPayload: snapshotPersisted ? undefined : payload,
     });
+
+    if (!persistenceResult.ok) {
+      setExtractFeedback({
+        state: "error",
+        message: describeExtractionPersistenceError(persistenceResult),
+      });
+      setExtracting(false);
+      return;
+    }
 
     setExtractFeedback({
       state: "success",
@@ -571,13 +690,96 @@ export default function IngestionPage() {
       typeof body === "object" && body !== null
         ? (body["status"] as string | undefined)
         : undefined;
+
+    const pickMessage = (source: unknown) => {
+      if (typeof source === "string" && source.trim()) {
+        return source.trim();
+      }
+      if (typeof source === "object" && source !== null) {
+        const candidates = [
+          (source as Record<string, unknown>)["error"],
+          (source as Record<string, unknown>)["message"],
+          (source as Record<string, unknown>)["detail"],
+          (source as Record<string, unknown>)["statusText"],
+          (source as Record<string, unknown>)["description"],
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate === "string" && candidate.trim()) {
+            return candidate.trim();
+          }
+        }
+      }
+      return undefined;
+    };
+
     const message =
-      typeof body === "string"
-        ? body
-        : typeof rawBody === "string"
-          ? rawBody
-          : undefined;
+      pickMessage(body) ??
+      pickMessage(payload?.error) ??
+      pickMessage(rawBody) ??
+      (typeof rawBody === "string" ? rawBody : undefined);
+
     return { cleansedId, status, message };
+  };
+
+  type SnapshotPayload = Omit<ExtractionSnapshot, "storedAt">;
+
+  const persistSnapshot = async (
+    id: string,
+    payload: SnapshotPayload,
+  ): Promise<{ ok: boolean; snapshotId?: string; message?: string }> => {
+    if (!id) {
+      return { ok: false, message: "Snapshot id is missing." };
+    }
+
+    const snapshotPayload: ExtractionSnapshot = {
+      ...payload,
+      storedAt: Date.now(),
+    };
+
+    try {
+      const response = await fetch("/api/ingestion/context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          payload: {
+            ...payload,
+            mode: payload.mode,
+            metadata: payload.metadata,
+            rawJson: payload.rawJson,
+            tree: payload.tree,
+            sourceUri: payload.sourceUri,
+            backendPayload: payload.backendPayload,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        let message = "Failed to cache extraction snapshot.";
+        try {
+          const body = await response.json();
+          if (body?.error) message = body.error;
+        } catch {
+          // ignore
+        }
+        throw new Error(message);
+      }
+
+      return { ok: true, snapshotId: id };
+    } catch (error) {
+      const localId = `local:${id}`;
+      const localResult = await storeClientSnapshot(localId, snapshotPayload);
+      if (localResult.ok) {
+        return { ok: true, snapshotId: localId };
+      }
+
+      return {
+        ok: false,
+        message:
+          localResult.message ??
+          (error instanceof Error ? error.message : "Failed to cache extraction snapshot."),
+      };
+    }
   };
 
   const toggleNode = (nodeId: string) => {

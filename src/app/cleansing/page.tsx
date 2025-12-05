@@ -252,6 +252,11 @@ export default function CleansingPage() {
       const response = await fetch(`/api/ingestion/cleansed-items?id=${encodeURIComponent(id)}`);
       const { body, rawBody } = await parseJson(response);
       if (!response.ok) {
+        if (response.status === 404) {
+          setItems([]);
+          setItemsError("Cleansed rows are not available yet.");
+          return;
+        }
         throw new Error(
           (body as Record<string, unknown>)?.error as string ??
             rawBody ??

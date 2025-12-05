@@ -198,16 +198,16 @@ export default function EnrichmentPage() {
     setActiveId(queryId ?? fallbackId);
   }, [queryId, localSnapshot?.metadata.cleansedId]);
 
-  const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> => {
-    const response = await fetch(`/api/ingestion/enrichment/status?id=${encodeURIComponent(id)}`);
-    const { body, rawBody } = await parseJson(response);
-    if (!response.ok) {
-      throw new Error(
-        (body as Record<string, unknown>)?.error as string ??
-          rawBody ??
-          "Backend rejected the enrichment status request.",
-      );
-    }
+const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> => {
+  const response = await fetch(`/api/ingestion/enrichment/status?id=${encodeURIComponent(id)}`);
+  const { body, rawBody } = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(
+      (body as Record<string, unknown>)?.error as string ??
+        rawBody ??
+        "Backend rejected the enrichment status request.",
+    );
+  }
     const proxyPayload = (body as Record<string, unknown>) ?? {};
     let backendRecord: Record<string, unknown> | null = null;
     if (proxyPayload.body && typeof proxyPayload.body === "object") {
@@ -233,7 +233,11 @@ export default function EnrichmentPage() {
     };
   };
 
-  const loadContext = async (id: string | null, showSpinner = true) => {
+  const loadContext = async (
+    id: string | null,
+    options: { showSpinner?: boolean; rethrowOnError?: boolean } = {},
+  ) => {
+    const { showSpinner = true, rethrowOnError = false } = options;
     if (!id) {
       setLoading(false);
       setError("Provide a cleansed ID via the URL or trigger a new run.");
@@ -255,7 +259,10 @@ export default function EnrichmentPage() {
       } else if (!localSnapshot) {
         setContext(null);
       }
-      throw statusError;
+      if (rethrowOnError) {
+        throw statusError;
+      }
+      return null;
     } finally {
       if (showSpinner) {
         setLoading(false);
@@ -271,6 +278,11 @@ export default function EnrichmentPage() {
       const response = await fetch(`/api/ingestion/enrichment/result?id=${encodeURIComponent(id)}`);
       const { body, rawBody } = await parseJson(response);
       if (!response.ok) {
+        if (response.status === 404) {
+          setSummary(null);
+          setSummaryFeedback({ state: "idle" });
+          return;
+        }
         throw new Error(
           (body as Record<string, unknown>)?.error as string ??
             rawBody ??
@@ -291,7 +303,7 @@ export default function EnrichmentPage() {
   };
 
   useEffect(() => {
-    loadContext(activeId);
+    loadContext(activeId).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
@@ -338,7 +350,7 @@ export default function EnrichmentPage() {
     }
     setStatusFeedback({ state: "loading" });
     try {
-      await loadContext(activeId, false);
+      await loadContext(activeId, { showSpinner: false, rethrowOnError: true });
       setStatusFeedback({ state: "success", message: "Status refreshed." });
       await fetchSummary(activeId, false);
     } catch (refreshError) {

@@ -424,6 +424,10 @@ export default function ExtractionPage() {
           ? composeSuccessMessage(storageResult)
           : payload?.error ?? "Backend rejected the request.",
       });
+
+      if (response.ok) {
+        router.push("/cleansing");
+      }
     } catch (error) {
       setFeedback({
         state: "error",

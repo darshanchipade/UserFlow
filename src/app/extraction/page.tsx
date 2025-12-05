@@ -206,6 +206,7 @@ const composeSuccessMessage = (storageResult?: PersistenceResult) => {
 
 export default function ExtractionPage() {
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
   const [context, setContext] = useState<ExtractionContext | null>(null);
   const [parsedJson, setParsedJson] = useState<any>(null);
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
@@ -219,6 +220,22 @@ export default function ExtractionPage() {
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [snapshotVersion, setSnapshotVersion] = useState(0);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Extraction</p>
+          <h1 className="mt-3 text-lg font-semibold text-slate-900">Preparing workspace…</h1>
+          <p className="mt-2 text-sm text-slate-500">Loading your latest extraction context.</p>
+        </div>
+      </div>
+    );
+  }
 
   const applyTreeFromNodes = useCallback((nodes: TreeNode[]) => {
     const flattened = flattenTree(nodes);

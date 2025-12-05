@@ -144,6 +144,49 @@ const formatValue = (value: unknown) => {
   return JSON.stringify(value, null, 2);
 };
 
+const pickValueFromPayload = (
+  payload: Record<string, unknown>,
+  preferredKeys: string[],
+): unknown => {
+  for (const key of preferredKeys) {
+    const candidate = payload[key];
+    if (
+      candidate !== undefined &&
+      candidate !== null &&
+      (typeof candidate === "string" ||
+        typeof candidate === "number" ||
+        typeof candidate === "boolean")
+    ) {
+      return candidate;
+    }
+  }
+
+  for (const key of FALLBACK_VALUE_KEYS) {
+    const candidate = payload[key];
+    if (
+      candidate !== undefined &&
+      candidate !== null &&
+      (typeof candidate === "string" ||
+        typeof candidate === "number" ||
+        typeof candidate === "boolean")
+    ) {
+      return candidate;
+    }
+  }
+
+  for (const value of Object.values(payload)) {
+    if (
+      value !== undefined &&
+      value !== null &&
+      (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+    ) {
+      return value;
+    }
+  }
+
+  return undefined;
+};
+
 const VALUE_LABEL_KEYS = ["field", "label", "path", "key", "name", "usagePath"];
 const ORIGINAL_VALUE_KEYS = [
   "originalValue",
@@ -162,6 +205,7 @@ const CLEANSED_VALUE_KEYS = [
   "valueAfter",
   "value",
 ];
+const FALLBACK_VALUE_KEYS = ["value", "text", "copy", "content", "payload", "cleaned"];
 
 const pickNumber = (value: unknown) => {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -425,13 +469,17 @@ export default function CleansingPage() {
         const label =
           (getFirstValue(payload, VALUE_LABEL_KEYS) as string | undefined) ??
           `Item ${index + 1}`;
-        const originalCandidate = getFirstValue(payload, ORIGINAL_VALUE_KEYS);
-        const cleansedCandidate = getFirstValue(payload, CLEANSED_VALUE_KEYS);
+        const originalCandidate =
+          getFirstValue(payload, ORIGINAL_VALUE_KEYS) ??
+          pickValueFromPayload(payload, ORIGINAL_VALUE_KEYS);
+        const cleansedCandidate =
+          getFirstValue(payload, CLEANSED_VALUE_KEYS) ??
+          pickValueFromPayload(payload, CLEANSED_VALUE_KEYS);
         return {
           id: payload.id ?? `${label}-${index}`,
           label,
-          original: formatValue(originalCandidate ?? payload),
-          cleansed: formatValue(cleansedCandidate ?? payload),
+          original: formatValue(originalCandidate),
+          cleansed: formatValue(cleansedCandidate),
         };
       }
       return {

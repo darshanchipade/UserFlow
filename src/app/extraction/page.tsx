@@ -26,6 +26,7 @@ import {
 } from "@/lib/extraction-context";
 import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
 import { readClientSnapshot } from "@/lib/client/snapshot-store";
+import { PipelineTracker } from "@/components/PipelineTracker";
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes)) return "—";
@@ -483,7 +484,7 @@ export default function ExtractionPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-400">
               Extraction
@@ -492,7 +493,10 @@ export default function ExtractionPage() {
               Review structured content
             </h1>
           </div>
-          <FeedbackPill feedback={feedback} />
+          <div className="flex flex-1 flex-col items-start gap-3 md:flex-row md:items-center md:justify-end">
+            <PipelineTracker current="extraction" />
+            <FeedbackPill feedback={feedback} />
+          </div>
         </div>
       </header>
 

@@ -2,20 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 
 const backendBaseUrl = process.env.SPRINGBOOT_BASE_URL;
 
-const safeStringify = (input: unknown) => {
-  try {
-    return JSON.stringify(input);
-  } catch {
-    return null;
-  }
-};
-
 const safeParse = (payload: string) => {
   try {
     return JSON.parse(payload);
   } catch {
     return payload;
   }
+};
+
+const extractId = (payload: unknown): string | null => {
+  if (typeof payload === "string") {
+    return payload.trim().length ? payload.trim() : null;
+  }
+  if (typeof payload === "object" && payload !== null) {
+    const candidate =
+      (payload as Record<string, unknown>).id ??
+      (payload as Record<string, unknown>).cleansedDataStoreId ??
+      (payload as Record<string, unknown>).cleansedId;
+    if (typeof candidate === "string" && candidate.trim().length) {
+      return candidate.trim();
+    }
+  }
+  return null;
 };
 
 export async function POST(request: NextRequest) {
@@ -36,36 +44,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const payload =
-    typeof incoming === "object" && incoming !== null
-      ? (incoming as Record<string, unknown>).payload
-      : undefined;
-
-  if (payload === undefined) {
+  const cleansedId = extractId(incoming);
+  if (!cleansedId) {
     return NextResponse.json(
-      { error: "Missing `payload` attribute." },
-      { status: 400 },
-    );
-  }
-
-  const serialized = safeStringify(payload);
-  if (serialized === null) {
-    return NextResponse.json(
-      { error: "Payload could not be serialized." },
+      { error: "Missing `id`/`cleansedDataStoreId`/`cleansedId` attribute." },
       { status: 400 },
     );
   }
 
   try {
-    const targetUrl = new URL("/api/ingest-json-payload", backendBaseUrl);
-    const upstream = await fetch(targetUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: serialized,
-    });
-
+    const targetUrl = new URL(`/api/enrichment/start/${cleansedId}`, backendBaseUrl);
+    const upstream = await fetch(targetUrl, { method: "POST" });
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);
 

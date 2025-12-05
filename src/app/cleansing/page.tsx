@@ -56,11 +56,21 @@ const mapLocalContext = (local: CleansedContext | null): RemoteCleansedContext |
 
 const parseJson = async (response: Response) => {
   const rawBody = await response.text();
-  try {
-    return { body: JSON.parse(rawBody), rawBody };
-  } catch {
-    return { body: null, rawBody };
+  const trimmed = rawBody.trim();
+  let body: unknown = null;
+  if (trimmed.length) {
+    try {
+      body = JSON.parse(trimmed);
+    } catch {
+      body = null;
+    }
   }
+  const looksLikeHtml = trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html");
+  const friendlyRaw =
+    looksLikeHtml && response.status
+      ? `${response.status} ${response.statusText || ""}`.trim() || "HTML response returned."
+      : rawBody;
+  return { body, rawBody: friendlyRaw };
 };
 
 const deriveItems = (items?: unknown[], rawBody?: string): unknown[] => {

@@ -15,11 +15,17 @@ type Feedback = {
   message?: string;
 };
 
+type SummaryFeedback = {
+  state: "idle" | "loading" | "error";
+  message?: string;
+};
+
 const STATUS_LABELS: Record<string, string> = {
   ENRICHMENT_TRIGGERED: "Queued for enrichment",
   WAITING_FOR_RESULTS: "Awaiting AI output",
-  ENRICHMENT_COMPLETE: "Enrichment complete",
+  ENRICHMENT_RUNNING: "Enrichment running",
   PARTIALLY_ENRICHED: "Partially enriched",
+  ENRICHMENT_COMPLETE: "Enrichment complete",
   ERROR: "Failed",
 };
 
@@ -36,6 +42,11 @@ const STATUS_COLORS: Record<
     className: "text-amber-700",
     dot: "bg-amber-400",
     background: "bg-amber-50",
+  },
+  ENRICHMENT_RUNNING: {
+    className: "text-sky-700",
+    dot: "bg-sky-400",
+    background: "bg-sky-50",
   },
   ENRICHMENT_COMPLETE: {
     className: "text-emerald-700",
@@ -63,6 +74,8 @@ export default function EnrichmentPage() {
   const router = useRouter();
   const [context, setContext] = useState<EnrichmentContext | null>(null);
   const [statusFeedback, setStatusFeedback] = useState<Feedback>({ state: "idle" });
+  const [summaryFeedback, setSummaryFeedback] = useState<SummaryFeedback>({ state: "idle" });
+  const [summary, setSummary] = useState<string | null>(null);
 
   useEffect(() => {
     setContext(loadEnrichmentContext());
@@ -82,13 +95,17 @@ export default function EnrichmentPage() {
     const statuses = [
       "ENRICHMENT_TRIGGERED",
       "WAITING_FOR_RESULTS",
+      "ENRICHMENT_RUNNING",
       "PARTIALLY_ENRICHED",
       "ENRICHMENT_COMPLETE",
     ];
     const index = statuses.findIndex((status) => status === currentStatus);
-    if (index === -1) return 25;
-    return ((index + 1) / statuses.length) * 100;
-  }, [currentStatus]);
+    if (index >= 0) {
+      return ((index + 1) / statuses.length) * 100;
+    }
+    const derivedIndex = Math.min(statusHistory.length, statuses.length);
+    return (derivedIndex / statuses.length) * 100;
+  }, [currentStatus, statusHistory.length]);
 
   const handleRefreshStatus = async () => {
     if (!context?.metadata.cleansedId) {
@@ -134,6 +151,7 @@ export default function EnrichmentPage() {
       saveEnrichmentContext(nextContext);
       setContext(nextContext);
       setStatusFeedback({ state: "success", message: "Status refreshed." });
+      await fetchSummary(false);
     } catch (error) {
       setStatusFeedback({
         state: "error",
@@ -164,6 +182,59 @@ export default function EnrichmentPage() {
       </div>
     );
   }
+
+  const extractSummary = (body: unknown): string => {
+    if (typeof body === "string") return body;
+    if (body && typeof body === "object") {
+      const source = body as Record<string, unknown>;
+      const summaryKeys = ["summary", "aiSummary", "insights", "result", "text", "content"];
+      for (const key of summaryKeys) {
+        const candidate = source[key];
+        if (typeof candidate === "string" && candidate.trim()) {
+          return candidate;
+        }
+      }
+      return JSON.stringify(source, null, 2);
+    }
+    return "Awaiting enrichment results.";
+  };
+
+  const fetchSummary = async (showLoading = true) => {
+    if (!context?.metadata.cleansedId) return;
+    if (showLoading) {
+      setSummaryFeedback({ state: "loading" });
+    }
+    try {
+      const response = await fetch(
+        `/api/ingestion/enrichment/result?id=${encodeURIComponent(
+          context.metadata.cleansedId,
+        )}`,
+      );
+      const payload = await response.json();
+      if (!response.ok) {
+        setSummaryFeedback({
+          state: "error",
+          message: payload?.error ?? "Backend rejected the enrichment result request.",
+        });
+        return;
+      }
+      setSummary(extractSummary(payload?.body ?? payload));
+      setSummaryFeedback({ state: "idle" });
+    } catch (error) {
+      setSummaryFeedback({
+        state: "error",
+        message:
+          error instanceof Error ? error.message : "Unable to load enrichment results.",
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (context?.metadata.cleansedId) {
+      fetchSummary();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context?.metadata.cleansedId]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -294,11 +365,29 @@ export default function EnrichmentPage() {
             </span>
           </div>
           <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700">
-            <p>
-              Awaiting enrichment results. Once the backend finishes generating AI insights,
-              they’ll appear here automatically. Use the “Refresh status” button above to check
-              for updates.
-            </p>
+            {summaryFeedback.state === "loading" ? (
+              <p>Loading enrichment summary…</p>
+            ) : summaryFeedback.state === "error" ? (
+              <div>
+                <p className="font-semibold text-amber-700">Unable to load enrichment summary.</p>
+                <p className="text-xs text-slate-600">{summaryFeedback.message}</p>
+                <button
+                  type="button"
+                  onClick={() => fetchSummary(true)}
+                  className="mt-3 rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : summary ? (
+              <pre className="whitespace-pre-wrap text-sm text-slate-800">{summary}</pre>
+            ) : (
+              <p>
+                Awaiting enrichment results. Once the backend finishes generating AI insights,
+                they’ll appear here automatically. Use the “Refresh status” button above to check
+                for updates.
+              </p>
+            )}
           </div>
         </section>
 

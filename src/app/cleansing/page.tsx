@@ -99,6 +99,8 @@ export default function CleansingPage() {
   const [enrichmentFeedback, setEnrichmentFeedback] = useState<Feedback>({
     state: "idle",
   });
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError, setItemsError] = useState<string | null>(null);
 
   useEffect(() => {
     setContext(loadCleansedContext());
@@ -210,6 +212,47 @@ export default function CleansingPage() {
     }
   };
 
+  const fetchItems = async () => {
+    if (!context?.metadata.cleansedId) return;
+    setItemsLoading(true);
+    setItemsError(null);
+    try {
+      const response = await fetch(
+        `/api/ingestion/cleansed-items?id=${encodeURIComponent(
+          context.metadata.cleansedId,
+        )}`,
+      );
+      const payload = await response.json();
+      if (!response.ok) {
+        setItemsError(payload?.error ?? "Backend rejected the items request.");
+        return;
+      }
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      setContext((previous) =>
+        previous
+          ? {
+              ...previous,
+              items,
+              rawBody: payload?.rawBody,
+            }
+          : previous,
+      );
+    } catch (error) {
+      setItemsError(
+        error instanceof Error ? error.message : "Unable to fetch cleansed items.",
+      );
+    } finally {
+      setItemsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (context?.metadata.cleansedId && (!context.items || context.items.length === 0)) {
+      fetchItems();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context?.metadata.cleansedId]);
+
   if (!context) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-16">
@@ -301,7 +344,23 @@ export default function CleansingPage() {
             )}
           </div>
 
-          {previewRows.length === 0 ? (
+          {itemsLoading ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 py-10 text-center text-sm text-slate-600">
+              Fetching latest cleansed rows…
+            </div>
+          ) : itemsError ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">Unable to load cleansed items.</p>
+              <p className="mt-1">{itemsError}</p>
+              <button
+                type="button"
+                onClick={fetchItems}
+                className="mt-3 rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
+              >
+                Retry fetch
+              </button>
+            </div>
+          ) : previewRows.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
               No cleansed items available yet.
             </div>

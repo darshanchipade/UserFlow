@@ -571,12 +571,34 @@ export default function IngestionPage() {
       typeof body === "object" && body !== null
         ? (body["status"] as string | undefined)
         : undefined;
+
+    const pickMessage = (source: unknown) => {
+      if (typeof source === "string" && source.trim()) {
+        return source.trim();
+      }
+      if (typeof source === "object" && source !== null) {
+        const candidates = [
+          (source as Record<string, unknown>)["error"],
+          (source as Record<string, unknown>)["message"],
+          (source as Record<string, unknown>)["detail"],
+          (source as Record<string, unknown>)["statusText"],
+          (source as Record<string, unknown>)["description"],
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate === "string" && candidate.trim()) {
+            return candidate.trim();
+          }
+        }
+      }
+      return undefined;
+    };
+
     const message =
-      typeof body === "string"
-        ? body
-        : typeof rawBody === "string"
-          ? rawBody
-          : undefined;
+      pickMessage(body) ??
+      pickMessage(payload?.error) ??
+      pickMessage(rawBody) ??
+      (typeof rawBody === "string" ? rawBody : undefined);
+
     return { cleansedId, status, message };
   };
 

@@ -2,36 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 const backendBaseUrl = process.env.SPRINGBOOT_BASE_URL;
 
-const safeParse = (payload: string) => {
+const parseUpstreamBody = async (upstream: Response) => {
+  const rawBody = await upstream.text();
+  let body: unknown = rawBody;
   try {
-    return JSON.parse(payload);
+    body = JSON.parse(rawBody);
   } catch {
-    return payload;
+    // leave body as raw string
   }
-};
-
-type BackendItemResponse = {
-  originalValue?: unknown;
-  cleansedValue?: unknown;
-  field?: string;
-  label?: string;
-  path?: string;
-  [key: string]: unknown;
-};
-
-const normalizeItems = (payload: unknown): BackendItemResponse[] => {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  if (payload && typeof payload === "object") {
-    if (Array.isArray((payload as Record<string, unknown>).items)) {
-      return (payload as Record<string, unknown>).items as BackendItemResponse[];
-    }
-    if (Array.isArray((payload as Record<string, unknown>).records)) {
-      return (payload as Record<string, unknown>).records as BackendItemResponse[];
-    }
-  }
-  return [];
+  return { body, rawBody };
 };
 
 export async function GET(request: NextRequest) {
@@ -51,17 +30,15 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const targetUrl = new URL(`/api/cleansed-items/${id}`, backendBaseUrl);
+    const targetUrl = new URL(`/api/cleansed-context/${id}`, backendBaseUrl);
     const upstream = await fetch(targetUrl);
-    const rawBody = await upstream.text();
-    const body = safeParse(rawBody);
-    const items = normalizeItems(body);
+    const { body, rawBody } = await parseUpstreamBody(upstream);
 
     return NextResponse.json(
       {
         upstreamStatus: upstream.status,
         upstreamOk: upstream.ok,
-        items,
+        body,
         rawBody,
       },
       { status: upstream.ok ? 200 : upstream.status },
@@ -70,7 +47,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Unable to reach Spring Boot backend.",
+          error instanceof Error
+            ? error.message
+            : "Unable to reach Spring Boot cleansed context endpoint.",
       },
       { status: 502 },
     );

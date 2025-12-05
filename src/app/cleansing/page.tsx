@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
-  loadCleansedContext,
   clearCleansedContext,
+  loadCleansedContext,
   saveEnrichmentContext,
   type CleansedContext,
 } from "@/lib/extraction-context";
@@ -34,24 +34,54 @@ type Feedback = {
   message?: string;
 };
 
-const VALUE_LABEL_KEYS = ["field", "label", "path", "key", "name", "usagePath"];
-const ORIGINAL_VALUE_KEYS = [
-  "originalValue",
-  "rawValue",
-  "sourceValue",
-  "before",
-  "input",
-  "valueBefore",
-];
-const CLEANSED_VALUE_KEYS = [
-  "cleansedValue",
-  "cleanedValue",
-  "normalizedValue",
-  "after",
-  "output",
-  "valueAfter",
-  "value",
-];
+type RemoteCleansedContext = {
+  metadata: CleansedContext["metadata"];
+  status?: string;
+  items?: unknown[];
+  rawBody?: string;
+  fallbackReason?: string;
+};
+
+const mapLocalContext = (local: CleansedContext | null): RemoteCleansedContext | null => {
+  if (!local) return null;
+  return {
+    metadata: local.metadata,
+    status: local.status,
+    items: local.items,
+    rawBody: local.rawBody,
+    fallbackReason: local.fallbackReason,
+  };
+};
+
+const deriveItems = (items?: unknown[], rawBody?: string): unknown[] => {
+  if (Array.isArray(items) && items.length) {
+    return items;
+  }
+const parseJson = async (response: Response) => {
+  const rawBody = await response.text();
+  try {
+    return { body: JSON.parse(rawBody), rawBody };
+  } catch {
+    return { body: null, rawBody };
+  }
+};
+  if (typeof rawBody === "string" && rawBody.trim()) {
+    try {
+      const parsed = JSON.parse(rawBody);
+      if (Array.isArray(parsed)) return parsed;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as Record<string, unknown>).items)
+      ) {
+        return (parsed as Record<string, unknown>).items as unknown[];
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+  return [];
+};
 
 const getFirstValue = (payload: Record<string, unknown>, keys: string[]) => {
   for (const key of keys) {
@@ -75,6 +105,25 @@ const formatValue = (value: unknown) => {
   return JSON.stringify(value, null, 2);
 };
 
+const VALUE_LABEL_KEYS = ["field", "label", "path", "key", "name", "usagePath"];
+const ORIGINAL_VALUE_KEYS = [
+  "originalValue",
+  "rawValue",
+  "sourceValue",
+  "before",
+  "input",
+  "valueBefore",
+];
+const CLEANSED_VALUE_KEYS = [
+  "cleansedValue",
+  "cleanedValue",
+  "normalizedValue",
+  "after",
+  "output",
+  "valueAfter",
+  "value",
+];
+
 const FeedbackPill = ({ feedback }: { feedback: Feedback }) => {
   if (feedback.state === "idle") return null;
   const base =
@@ -95,39 +144,134 @@ const FeedbackPill = ({ feedback }: { feedback: Feedback }) => {
 
 export default function CleansingPage() {
   const router = useRouter();
-  const [context, setContext] = useState<CleansedContext | null>(null);
-  const [enrichmentFeedback, setEnrichmentFeedback] = useState<Feedback>({
-    state: "idle",
-  });
+  const searchParams = useSearchParams();
+  const queryId = searchParams.get("id");
+  const localSnapshot = mapLocalContext(loadCleansedContext());
+
+  const [context, setContext] = useState<RemoteCleansedContext | null>(localSnapshot);
+  const [items, setItems] = useState<unknown[]>(deriveItems(localSnapshot?.items, localSnapshot?.rawBody));
+  const [loading, setLoading] = useState<boolean>(!localSnapshot);
+  const [error, setError] = useState<string | null>(null);
+  const [enrichmentFeedback, setEnrichmentFeedback] = useState<Feedback>({ state: "idle" });
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError, setItemsError] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(
+    queryId ?? localSnapshot?.metadata.cleansedId ?? null,
+  );
 
   useEffect(() => {
-    setContext(loadCleansedContext());
-  }, []);
+    const fallbackId = localSnapshot?.metadata.cleansedId ?? null;
+    setActiveId(queryId ?? fallbackId);
+  }, [queryId, localSnapshot?.metadata.cleansedId]);
 
-  const itemsPreview = useMemo(() => {
-    if (!context) return [];
-    if (Array.isArray(context.items) && context.items.length > 0) {
-      return context.items.slice(0, 10);
-    }
-    if (typeof context.rawBody === "string" && context.rawBody.trim()) {
-      try {
-        const parsed = JSON.parse(context.rawBody);
-        if (Array.isArray(parsed)) {
-          return parsed.slice(0, 10);
-        }
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          Array.isArray((parsed as Record<string, unknown>).items)
-        ) {
-          return ((parsed as Record<string, unknown>).items as unknown[]).slice(0, 10);
-        }
-      } catch {
-        // ignore parse errors
+  const fetchItems = async (id: string) => {
+    setItemsLoading(true);
+    setItemsError(null);
+    try {
+      const response = await fetch(`/api/ingestion/cleansed-items?id=${encodeURIComponent(id)}`);
+      const { body, rawBody } = await parseJson(response);
+      if (!response.ok) {
+        throw new Error(
+          (body as Record<string, unknown>)?.error as string ??
+            rawBody ??
+            "Backend rejected the items request.",
+        );
       }
+      const normalized = Array.isArray((body as Record<string, unknown>)?.items)
+        ? ((body as Record<string, unknown>).items as unknown[])
+        : [];
+      setItems(normalized);
+      setContext((previous) =>
+        previous
+          ? {
+              ...previous,
+              items: normalized,
+              rawBody:
+                typeof (body as Record<string, unknown>)?.rawBody === "string"
+                  ? ((body as Record<string, unknown>).rawBody as string)
+                  : previous.rawBody,
+            }
+          : previous,
+      );
+    } catch (itemsErr) {
+      setItemsError(itemsErr instanceof Error ? itemsErr.message : "Unable to fetch cleansed items.");
+    } finally {
+      setItemsLoading(false);
     }
-    return [];
-  }, [context]);
+  };
+
+  useEffect(() => {
+    const fetchContext = async (id: string | null) => {
+      if (!id) {
+        setLoading(false);
+        setError("Provide a cleansed ID via the URL or trigger a new run.");
+        setContext(localSnapshot);
+        setItems(deriveItems(localSnapshot?.items, localSnapshot?.rawBody));
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/ingestion/cleansed-context?id=${encodeURIComponent(id)}`);
+        const { body, rawBody } = await parseJson(response);
+        if (!response.ok) {
+          throw new Error(
+            (body as Record<string, unknown>)?.error as string ??
+              rawBody ??
+              "Backend rejected the cleansed context request.",
+          );
+        }
+        const payloadBody = (body as Record<string, unknown>) ?? {};
+        const remoteContext: RemoteCleansedContext = {
+          metadata: (payloadBody.metadata as CleansedContext["metadata"]) ??
+            localSnapshot?.metadata ?? {
+            name: "Unknown dataset",
+            size: 0,
+            source: "unknown",
+            uploadedAt: Date.now(),
+            cleansedId: id,
+          },
+          status:
+            typeof payloadBody.status === "string"
+              ? (payloadBody.status as string)
+              : localSnapshot?.status,
+          items: Array.isArray(payloadBody.items) ? (payloadBody.items as unknown[]) : undefined,
+          rawBody:
+            typeof payloadBody.rawBody === "string"
+              ? (payloadBody.rawBody as string)
+              : undefined,
+          fallbackReason:
+            typeof payloadBody.fallbackReason === "string"
+              ? (payloadBody.fallbackReason as string)
+              : undefined,
+        };
+        setContext(remoteContext);
+        const derived = deriveItems(remoteContext.items, remoteContext.rawBody);
+        setItems(derived);
+        if (!derived.length) {
+          await fetchItems(id);
+        }
+      } catch (contextError) {
+        setError(
+          contextError instanceof Error ? contextError.message : "Unable to load cleansed context.",
+        );
+        if (localSnapshot) {
+          setContext(localSnapshot);
+          setItems(deriveItems(localSnapshot.items, localSnapshot.rawBody));
+        } else {
+          setContext(null);
+          setItems([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchContext(activeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  const itemsPreview = useMemo(() => items.slice(0, 10), [items]);
 
   const previewRows = useMemo(() => {
     return itemsPreview.map((item, index) => {
@@ -200,7 +344,7 @@ export default function CleansingPage() {
         state: "success",
         message: "Enrichment pipeline triggered.",
       });
-      router.push("/enrichment");
+      router.push(`/enrichment?id=${encodeURIComponent(context.metadata.cleansedId)}`);
     } catch (error) {
       setEnrichmentFeedback({
         state: "error",
@@ -210,14 +354,30 @@ export default function CleansingPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-16">
+        <div className="max-w-lg rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Cleansing</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-900">Loading context…</h1>
+          <p className="mt-3 text-sm text-slate-500">
+            Fetching cleansed snapshot from the backend. One moment please.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!context) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-16">
         <div className="max-w-lg rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
           <p className="text-xs uppercase tracking-wide text-slate-400">Cleansing</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-900">No cleansing data yet</h1>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-900">
+            {error ?? "Cleansed context not found"}
+          </h1>
           <p className="mt-3 text-sm text-slate-500">
-            Trigger cleansing from the Extraction view to review items here.
+            Provide a valid `id` query parameter or trigger the pipeline again.
           </p>
           <button
             type="button"
@@ -294,14 +454,30 @@ export default function CleansingPage() {
                 Original vs Cleansed values
               </h2>
             </div>
-            {context.itemsTruncated && (
+            {context.items?.length && context.items.length > 10 && (
               <span className="text-xs font-semibold text-amber-600">
                 Showing first {previewRows.length} items
               </span>
             )}
           </div>
 
-          {previewRows.length === 0 ? (
+          {itemsLoading ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 py-10 text-center text-sm text-slate-600">
+              Fetching latest cleansed rows…
+            </div>
+          ) : itemsError ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">Unable to load cleansed items.</p>
+              <p className="mt-1">{itemsError}</p>
+              <button
+                type="button"
+                onClick={() => context.metadata.cleansedId && fetchItems(context.metadata.cleansedId)}
+                className="mt-3 rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
+              >
+                Retry fetch
+              </button>
+            </div>
+          ) : previewRows.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-500">
               No cleansed items available yet.
             </div>

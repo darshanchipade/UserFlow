@@ -406,14 +406,29 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
   const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
   const mergedMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
   const now = Date.now();
-  const backendHistory = Array.isArray(
-    backendRecord?.["statusHistory"] as { status: string; timestamp: number }[] | undefined,
-  )
-    ? (backendRecord?.["statusHistory"] as { status: string; timestamp: number }[])
-    : (
-        extractHistoryFromRecord(backendRecord, now) ??
-        extractHistoryFromRecord(proxyPayload, now)
-      );
+  let history: RemoteEnrichmentContext["statusHistory"] | null = null;
+  if (Array.isArray(backendRecord?.["statusHistory"])) {
+    history = backendRecord?.["statusHistory"] as { status: string; timestamp: number }[];
+  } else {
+    history =
+      extractHistoryFromRecord(backendRecord, now) ??
+      extractHistoryFromRecord(proxyPayload, now);
+  }
+
+  const inferredHistory =
+    history && history.length
+      ? history
+      : (() => {
+          const fallbackStatus =
+            normalizePipelineStatus(pickString(proxyPayload.status)) ??
+            normalizePipelineStatus(pickString(proxyPayload.pipelineStatus)) ??
+            normalizePipelineStatus(pickString(proxyPayload.state)) ??
+            normalizePipelineStatus(pickString(proxyPayload.currentStatus));
+          if (!fallbackStatus) {
+            return null;
+          }
+          return buildHistoryForStatus(fallbackStatus, now);
+        })();
 
   return {
     metadata: mergedMetadata,
@@ -421,7 +436,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       pickNumber(backendRecord?.startedAt) ??
       pickNumber(proxyPayload.startedAt) ??
       Date.now(),
-    statusHistory: backendHistory && backendHistory.length ? backendHistory : FALLBACK_HISTORY,
+    statusHistory: inferredHistory && inferredHistory.length ? inferredHistory : FALLBACK_HISTORY,
   };
 };
 

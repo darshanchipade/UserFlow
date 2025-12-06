@@ -32,6 +32,19 @@ export async function GET(request: NextRequest) {
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);
 
+    if (upstream.status === 404) {
+      return NextResponse.json(
+        {
+          upstreamStatus: upstream.status,
+          upstreamOk: false,
+          status: "NOT_FOUND",
+          body,
+          rawBody,
+        },
+        { status: 200 },
+      );
+    }
+
     return NextResponse.json(
       {
         upstreamStatus: upstream.status,

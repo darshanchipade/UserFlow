@@ -375,7 +375,11 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
   const response = await fetch(`/api/ingestion/enrichment/status?id=${encodeURIComponent(id)}`);
   const { body, rawBody } = await parseJson(response);
 
-  if (response.status === 404) {
+  const proxyPayload = (body as Record<string, unknown>) ?? {};
+  const upstreamOk =
+    typeof proxyPayload.upstreamOk === "boolean" ? proxyPayload.upstreamOk : response.ok;
+
+  if (!upstreamOk) {
     const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
     const fallbackHistory =
       localSnapshot?.statusHistory && localSnapshot.statusHistory.length
@@ -396,13 +400,12 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     );
   }
 
-  const proxyPayload = (body as Record<string, unknown>) ?? {};
-  let backendRecord: Record<string, unknown> | null = null;
-  if (proxyPayload.body && typeof proxyPayload.body === "object") {
-    backendRecord = proxyPayload.body as Record<string, unknown>;
-  } else if (!("body" in proxyPayload) && typeof proxyPayload === "object") {
-    backendRecord = proxyPayload;
-  }
+  const backendPayload =
+    "body" in proxyPayload ? proxyPayload.body : (proxyPayload as unknown);
+  const backendRecord =
+    backendPayload && typeof backendPayload === "object"
+      ? (backendPayload as Record<string, unknown>)
+      : null;
   const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
   const mergedMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
   const now = Date.now();
@@ -411,7 +414,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     history = backendRecord?.["statusHistory"] as { status: string; timestamp: number }[];
   } else {
     history =
-      extractHistoryFromRecord(backendRecord, now) ??
+      extractHistoryFromRecord(backendPayload, now) ??
       extractHistoryFromRecord(proxyPayload, now);
   }
 
@@ -420,10 +423,21 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       ? history
       : (() => {
           const fallbackStatus =
+            normalizePipelineStatus(
+              pickString(
+                backendRecord?.status ??
+                  backendRecord?.pipelineStatus ??
+                  backendRecord?.state ??
+                  backendRecord?.currentStatus,
+              ),
+            ) ??
             normalizePipelineStatus(pickString(proxyPayload.status)) ??
             normalizePipelineStatus(pickString(proxyPayload.pipelineStatus)) ??
             normalizePipelineStatus(pickString(proxyPayload.state)) ??
-            normalizePipelineStatus(pickString(proxyPayload.currentStatus));
+            normalizePipelineStatus(pickString(proxyPayload.currentStatus)) ??
+            normalizePipelineStatus(
+              typeof backendPayload === "string" ? backendPayload : undefined,
+            );
           if (!fallbackStatus) {
             return null;
           }

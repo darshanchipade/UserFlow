@@ -136,6 +136,11 @@ const normalizeProxyDetails = (payload: unknown): EnrichmentDetailRow[] => {
         pickString(record.field) ??
         pickString(record.label) ??
         `Item ${index + 1}`;
+      const summary =
+        pickString(record.summary) ??
+        pickString(record.aiSummary) ??
+        pickString(record.description) ??
+        pickString(record.content);
       const tags = toStringArray(record.tags);
       const sentiments = toStringArray(record.sentiments);
       return {
@@ -144,12 +149,30 @@ const normalizeProxyDetails = (payload: unknown): EnrichmentDetailRow[] => {
           pickString(record.cleansedId) ??
           `enrichment-${index}`,
         cleansedItem,
-        summary: pickString(record.summary),
+        summary: summary ?? undefined,
         tags,
         sentiments,
       };
     })
     .filter((row): row is EnrichmentDetailRow => Boolean(row));
+};
+
+const buildSummaryFromDetails = (details: EnrichmentDetailRow[]): string | undefined => {
+  if (!details.length) {
+    return undefined;
+  }
+  return details
+    .map((detail) => {
+      const summaryLine = detail.summary ?? "Awaiting summary.";
+      const tagsLine = detail.tags.length ? `Tags: ${detail.tags.join(", ")}` : null;
+      const sentimentsLine = detail.sentiments.length
+        ? `Sentiments: ${detail.sentiments.join(", ")}`
+        : null;
+      return [`${detail.cleansedItem}: ${summaryLine}`, tagsLine, sentimentsLine]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n\n");
 };
 
 const buildDefaultMetadata = (
@@ -357,13 +380,18 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       const proxyPayload = (body as Record<string, unknown>) ?? {};
       const normalizedDetails = normalizeProxyDetails(proxyPayload.details);
       setEnrichmentDetails(normalizedDetails);
+      const combinedDetailSummary = buildSummaryFromDetails(normalizedDetails);
       const summarySource =
         (typeof proxyPayload.summary === "string" && proxyPayload.summary.trim().length
           ? proxyPayload.summary
-          : proxyPayload.body ?? proxyPayload.rawBody ?? rawBody ?? "Awaiting enrichment results.");
+          : combinedDetailSummary ??
+            proxyPayload.body ??
+            proxyPayload.rawBody ??
+            rawBody ??
+            "Awaiting enrichment results.");
       const derivedSummary =
         typeof summarySource === "string" ? summarySource : extractSummary(summarySource);
-      setSummary(derivedSummary ?? null);
+      setSummary(derivedSummary ?? combinedDetailSummary ?? null);
       setSummaryFeedback({ state: "idle" });
     } catch (summaryError) {
       setSummaryFeedback({
@@ -635,63 +663,75 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
             )}
           </div>
           {enrichmentDetails.length > 0 && (
-            <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100 bg-white">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Cleansed Item</th>
-                    <th className="px-4 py-3">Tags</th>
-                    <th className="px-4 py-3">Summary</th>
-                    <th className="px-4 py-3">Sentiments</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                  {enrichmentDetails.map((detail) => (
-                    <tr key={detail.id}>
-                      <td className="px-4 py-3 font-semibold text-slate-900">{detail.cleansedItem}</td>
-                      <td className="px-4 py-3">
-                        {detail.tags.length ? (
-                          <div className="flex flex-wrap gap-1">
-                            {detail.tags.map((tag) => (
-                              <span
-                                key={`${detail.id}-tag-${tag}`}
-                                className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {detail.summary ? (
-                          <p className="text-sm text-slate-800">{detail.summary}</p>
-                        ) : (
-                          <span className="text-slate-400">No summary available.</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {detail.sentiments.length ? (
-                          <div className="flex flex-wrap gap-1">
-                            {detail.sentiments.map((sentiment) => (
-                              <span
-                                key={`${detail.id}-sentiment-${sentiment}`}
-                                className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700"
-                              >
-                                {sentiment}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-4 max-h-[420px] space-y-4 overflow-y-auto pr-1">
+              {enrichmentDetails.map((detail) => (
+                <div
+                  key={detail.id}
+                  className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{detail.cleansedItem}</p>
+                      <p className="text-xs text-slate-500">AI-derived insight</p>
+                    </div>
+                    {detail.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {detail.tags.map((tag) => (
+                          <span
+                            key={`${detail.id}-header-tag-${tag}`}
+                            className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-800">
+                    {detail.summary ?? "Summary pending from enrichment pipeline."}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Tags
+                      </p>
+                      {detail.tags.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {detail.tags.map((tag) => (
+                            <span
+                              key={`${detail.id}-tag-${tag}`}
+                              className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400">—</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Sentiments
+                      </p>
+                      {detail.sentiments.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {detail.sentiments.map((sentiment) => (
+                            <span
+                              key={`${detail.id}-sentiment-${sentiment}`}
+                              className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700"
+                            >
+                              {sentiment}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400">—</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>

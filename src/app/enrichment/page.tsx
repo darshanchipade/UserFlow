@@ -40,6 +40,7 @@ const STATUS_LABELS: Record<string, string> = {
   ENRICHMENT_RUNNING: "Enrichment running",
   PARTIALLY_ENRICHED: "Partially enriched",
   ENRICHMENT_COMPLETE: "Enrichment complete",
+  ENRICHED_COMPLETE: "Enrichment complete",
   ERROR: "Failed",
 };
 
@@ -75,6 +76,14 @@ const STATUS_COLORS: Record<string, { className: string; dot: string; background
     background: "bg-rose-50",
   },
 };
+
+const STATUS_SEQUENCE = [
+  "ENRICHMENT_TRIGGERED",
+  "WAITING_FOR_RESULTS",
+  "ENRICHMENT_RUNNING",
+  "PARTIALLY_ENRICHED",
+  "ENRICHMENT_COMPLETE",
+];
 
 const FALLBACK_HISTORY: EnrichmentContext["statusHistory"] = [
   { status: "ENRICHMENT_TRIGGERED", timestamp: 0 },
@@ -180,6 +189,76 @@ const buildSummaryFromDetails = (details: EnrichmentDetailRow[]): string | undef
         .join("\n");
     })
     .join("\n\n");
+};
+
+const normalizePipelineStatus = (value?: string | null) => {
+  if (!value || typeof value !== "string") return undefined;
+  const normalized = value.trim().replace(/[\s-]+/g, "_").toUpperCase();
+  if (normalized === "ENRICHED_COMPLETE") {
+    return "ENRICHMENT_COMPLETE";
+  }
+  return normalized;
+};
+
+const buildHistoryForStatus = (status: string, baseTimestamp: number) => {
+  const normalized = normalizePipelineStatus(status);
+  if (!normalized) return null;
+  const index = STATUS_SEQUENCE.indexOf(normalized);
+  const steps = index >= 0 ? STATUS_SEQUENCE.slice(0, index + 1) : [normalized];
+  return steps.map((step, idx) => ({
+    status: step,
+    timestamp: baseTimestamp + idx,
+  }));
+};
+
+const extractHistoryFromRecord = (
+  payload: unknown,
+  defaultTimestamp: number,
+): RemoteEnrichmentContext["statusHistory"] | null => {
+  if (!payload || typeof payload !== "object") {
+    if (typeof payload === "string") {
+      return buildHistoryForStatus(payload, defaultTimestamp);
+    }
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  const directHistory = record.statusHistory;
+  if (Array.isArray(directHistory)) {
+    return directHistory.filter((entry): entry is { status: string; timestamp: number } => {
+      return (
+        !!entry &&
+        typeof entry === "object" &&
+        typeof entry.status === "string" &&
+        typeof entry.timestamp === "number"
+      );
+    });
+  }
+  const nested = record.body;
+  if (nested && typeof nested === "object") {
+    const nestedHistory = (nested as Record<string, unknown>).statusHistory;
+    if (Array.isArray(nestedHistory)) {
+      return nestedHistory.filter((entry): entry is { status: string; timestamp: number } => {
+        return (
+          !!entry &&
+          typeof entry === "object" &&
+          typeof entry.status === "string" &&
+          typeof entry.timestamp === "number"
+        );
+      });
+    }
+  }
+  const fallbackStatus =
+    normalizePipelineStatus(pickString(record.status)) ??
+    normalizePipelineStatus(pickString(record.pipelineStatus)) ??
+    normalizePipelineStatus(pickString(record.state)) ??
+    normalizePipelineStatus(pickString(record.currentStatus)) ??
+    normalizePipelineStatus(typeof payload === "string" ? payload : undefined);
+
+  if (fallbackStatus) {
+    return buildHistoryForStatus(fallbackStatus, defaultTimestamp);
+  }
+
+  return null;
 };
 
 const buildDefaultMetadata = (
@@ -326,11 +405,15 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
   }
   const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
   const mergedMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
+  const now = Date.now();
   const backendHistory = Array.isArray(
     backendRecord?.["statusHistory"] as { status: string; timestamp: number }[] | undefined,
   )
     ? (backendRecord?.["statusHistory"] as { status: string; timestamp: number }[])
-    : null;
+    : (
+        extractHistoryFromRecord(backendRecord, now) ??
+        extractHistoryFromRecord(proxyPayload, now)
+      );
 
   return {
     metadata: mergedMetadata,

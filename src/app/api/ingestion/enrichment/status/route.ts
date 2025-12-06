@@ -10,6 +10,36 @@ const safeParse = (payload: string) => {
   }
 };
 
+const fetchStatus = async (id: string) => {
+  const shouldUseQuery = true;
+  const targetBase = new URL("/api/enrichment/status", backendBaseUrl);
+
+  const attempt = async (useQuery: boolean) => {
+    const target = new URL(targetBase.toString());
+    if (useQuery) {
+      target.searchParams.set("id", id);
+    } else {
+      target.pathname = `${target.pathname.endsWith("/") ? target.pathname.slice(0, -1) : target.pathname}/${id}`;
+    }
+    const upstream = await fetch(target);
+    return { upstream, usedQuery: useQuery };
+  };
+
+  let { upstream, usedQuery } = await attempt(shouldUseQuery);
+
+  if (
+    !upstream.ok &&
+    upstream.status === 404 &&
+    usedQuery
+  ) {
+    const fallback = await attempt(false);
+    upstream = fallback.upstream;
+    usedQuery = fallback.usedQuery;
+  }
+
+  return upstream;
+};
+
 export async function GET(request: NextRequest) {
   if (!backendBaseUrl) {
     return NextResponse.json(
@@ -27,9 +57,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const targetUrl = new URL(`/api/enrichment/status`, backendBaseUrl);
-    targetUrl.searchParams.set("id", id);
-    const upstream = await fetch(targetUrl);
+    const upstream = await fetchStatus(id);
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);
 

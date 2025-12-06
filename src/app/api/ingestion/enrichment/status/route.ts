@@ -37,7 +37,6 @@ export async function GET(request: NextRequest) {
         {
           upstreamStatus: upstream.status,
           upstreamOk: false,
-          status: "NOT_FOUND",
           body,
           rawBody,
         },

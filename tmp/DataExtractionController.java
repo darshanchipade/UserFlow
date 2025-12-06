@@ -151,6 +151,40 @@ private String deriveSourceIdentifier(MultipartFile file) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error processing JSON payload "+ sourceIdentifier + ": " + e.getMessage());
         }
     }
+
+    @Operation(
+            summary = "Resume ingestion from an existing cleansed record",
+            description = "Replays the cleansing pipeline for an existing CleansedDataStore entry using the "
+                    + "original stored payload, allowing downstream steps to continue without re-uploading JSON."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "202", description = "Resume request accepted"),
+            @ApiResponse(responseCode = "404", description = "Cleansed record not found"),
+            @ApiResponse(responseCode = "409", description = "Cleansed record cannot be replayed"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    @PostMapping("/ingestion/resume/{id}")
+    public ResponseEntity<String> resumeIngestionFromSnapshot(
+            @Parameter(description = "UUID of the cleansed data entry to replay", required = true)
+            @PathVariable("id") UUID cleansedDataStoreId) {
+        logger.info("Received request to resume ingestion pipeline for CleansedDataStore {}", cleansedDataStoreId);
+        try {
+            CleansedDataStore cleansedDataEntry = dataIngestionService.resumeFromExistingCleansedId(cleansedDataStoreId);
+            return handleCleansingOutcome(cleansedDataEntry, "resume-" + cleansedDataStoreId);
+        } catch (IllegalArgumentException e) {
+            logger.warn("Unable to resume ingestion for {}: {}", cleansedDataStoreId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("CleansedDataStore not found for id " + cleansedDataStoreId);
+        } catch (IllegalStateException e) {
+            logger.error("CleansedDataStore {} cannot be resumed: {}", cleansedDataStoreId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body("Cannot resume cleansed record " + cleansedDataStoreId + ": " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error while resuming CleansedDataStore {}: {}", cleansedDataStoreId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error resuming cleansed record " + cleansedDataStoreId + ": " + e.getMessage());
+        }
+    }
     @Operation(
             summary = "Get cleansed data status",
             description = "Retrieves the status of a cleansed data entry by its ID. " +

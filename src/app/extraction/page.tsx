@@ -453,7 +453,13 @@ export default function ExtractionPage() {
     try {
       let response: Response;
       const snapshotRawJson = snapshot?.rawJson ?? context.rawJson;
-      if (context.mode === "s3" && context.sourceUri) {
+      const cleansedId = context.metadata.cleansedId;
+
+      if (cleansedId) {
+        response = await fetch(`/api/ingestion/resume/${encodeURIComponent(cleansedId)}`, {
+          method: "POST",
+        });
+      } else if (context.mode === "s3" && context.sourceUri) {
         response = await fetch("/api/ingestion/s3", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

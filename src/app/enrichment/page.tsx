@@ -76,10 +76,10 @@ const STATUS_COLORS: Record<string, { className: string; dot: string; background
   },
 };
 
-const FALLBACK_HISTORY = [
-  { status: "ENRICHMENT_TRIGGERED", timestamp: Date.now() },
-  { status: "WAITING_FOR_RESULTS", timestamp: Date.now() },
-] satisfies EnrichmentContext["statusHistory"];
+const FALLBACK_HISTORY: EnrichmentContext["statusHistory"] = [
+  { status: "ENRICHMENT_TRIGGERED", timestamp: 0 },
+  { status: "WAITING_FOR_RESULTS", timestamp: 0 },
+];
 
 const parseJson = async (response: Response) => {
   const rawBody = await response.text();
@@ -105,6 +105,13 @@ const pickNumber = (value: unknown) => {
     return value;
   }
   return undefined;
+};
+
+const formatTimestamp = (value?: number | null) => {
+  if (!value) {
+    return "—";
+  }
+  return new Date(value).toLocaleString();
 };
 
 const toStringArray = (value: unknown): string[] => {
@@ -587,15 +594,15 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Started at</p>
               <p className="text-sm font-semibold text-slate-900">
-                {new Date(context.startedAt).toLocaleString()}
+                {formatTimestamp(context.startedAt)}
               </p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Last update</p>
               <p className="text-sm font-semibold text-slate-900">
-                {new Date(
+                {formatTimestamp(
                   statusHistory[statusHistory.length - 1]?.timestamp ?? context.startedAt,
-                ).toLocaleString()}
+                )}
               </p>
             </div>
           </div>
@@ -618,9 +625,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
                   <p className={`text-sm font-semibold ${meta.className}`}>
                     {STATUS_LABELS[entry.status] ?? entry.status}
                   </p>
-                  <p className="text-xs text-slate-500">
-                    {new Date(entry.timestamp).toLocaleString()}
-                  </p>
+                  <p className="text-xs text-slate-500">{formatTimestamp(entry.timestamp)}</p>
                 </div>
               );
             })}

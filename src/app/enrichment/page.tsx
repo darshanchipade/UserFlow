@@ -295,6 +295,20 @@ export default function EnrichmentPage() {
 const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> => {
   const response = await fetch(`/api/ingestion/enrichment/status?id=${encodeURIComponent(id)}`);
   const { body, rawBody } = await parseJson(response);
+
+  if (response.status === 404) {
+    const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
+    const fallbackHistory =
+      localSnapshot?.statusHistory && localSnapshot.statusHistory.length
+        ? localSnapshot.statusHistory
+        : FALLBACK_HISTORY;
+    return {
+      metadata: fallbackMetadata,
+      startedAt: localSnapshot?.startedAt ?? Date.now(),
+      statusHistory: fallbackHistory,
+    };
+  }
+
   if (!response.ok) {
     throw new Error(
       (body as Record<string, unknown>)?.error as string ??
@@ -302,30 +316,31 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
         "Backend rejected the enrichment status request.",
     );
   }
-    const proxyPayload = (body as Record<string, unknown>) ?? {};
-    let backendRecord: Record<string, unknown> | null = null;
-    if (proxyPayload.body && typeof proxyPayload.body === "object") {
-      backendRecord = proxyPayload.body as Record<string, unknown>;
-    } else if (!("body" in proxyPayload) && typeof proxyPayload === "object") {
-      backendRecord = proxyPayload;
-    }
-    const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
-    const mergedMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
-    const backendHistory = Array.isArray(
-      backendRecord?.["statusHistory"] as { status: string; timestamp: number }[] | undefined,
-    )
-      ? (backendRecord?.["statusHistory"] as { status: string; timestamp: number }[])
-      : null;
 
-    return {
-      metadata: mergedMetadata,
-      startedAt:
-        pickNumber(backendRecord?.startedAt) ??
-        pickNumber(proxyPayload.startedAt) ??
-        Date.now(),
-      statusHistory: backendHistory && backendHistory.length ? backendHistory : FALLBACK_HISTORY,
-    };
+  const proxyPayload = (body as Record<string, unknown>) ?? {};
+  let backendRecord: Record<string, unknown> | null = null;
+  if (proxyPayload.body && typeof proxyPayload.body === "object") {
+    backendRecord = proxyPayload.body as Record<string, unknown>;
+  } else if (!("body" in proxyPayload) && typeof proxyPayload === "object") {
+    backendRecord = proxyPayload;
+  }
+  const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
+  const mergedMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
+  const backendHistory = Array.isArray(
+    backendRecord?.["statusHistory"] as { status: string; timestamp: number }[] | undefined,
+  )
+    ? (backendRecord?.["statusHistory"] as { status: string; timestamp: number }[])
+    : null;
+
+  return {
+    metadata: mergedMetadata,
+    startedAt:
+      pickNumber(backendRecord?.startedAt) ??
+      pickNumber(proxyPayload.startedAt) ??
+      Date.now(),
+    statusHistory: backendHistory && backendHistory.length ? backendHistory : FALLBACK_HISTORY,
   };
+};
 
   const loadContext = async (
     id: string | null,

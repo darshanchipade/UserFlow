@@ -10,13 +10,13 @@ const safeParse = (payload: string) => {
   }
 };
 
-type RouteParams = {
-  params: {
+type RouteContext = {
+  params: Promise<{
     id?: string;
-  };
+  }>;
 };
 
-export async function POST(_request: NextRequest, context: RouteParams) {
+export async function POST(_request: NextRequest, context: RouteContext) {
   if (!backendBaseUrl) {
     return NextResponse.json(
       { error: "SPRINGBOOT_BASE_URL is not configured." },
@@ -24,7 +24,8 @@ export async function POST(_request: NextRequest, context: RouteParams) {
     );
   }
 
-  const cleansedId = context.params?.id?.trim();
+  const params = await context.params;
+  const cleansedId = params.id?.trim();
   if (!cleansedId) {
     return NextResponse.json(
       { error: "Missing cleansed id in the request path." },

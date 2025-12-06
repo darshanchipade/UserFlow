@@ -20,6 +20,14 @@ type SummaryFeedback = {
   message?: string;
 };
 
+type EnrichmentDetailRow = {
+  id: string;
+  cleansedItem: string;
+  summary?: string;
+  tags: string[];
+  sentiments: string[];
+};
+
 type RemoteEnrichmentContext = {
   metadata: EnrichmentContext["metadata"];
   startedAt: number;
@@ -97,6 +105,51 @@ const pickNumber = (value: unknown) => {
     return value;
   }
   return undefined;
+};
+
+const toStringArray = (value: unknown): string[] => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === "string" ? entry.trim() : undefined))
+      .filter((entry): entry is string => Boolean(entry && entry.length));
+  }
+  if (typeof value === "string" && value.trim().length) {
+    return value
+      .split(",")
+      .map((token) => token.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const normalizeProxyDetails = (payload: unknown): EnrichmentDetailRow[] => {
+  if (!Array.isArray(payload)) return [];
+  return payload
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      const record = entry as Record<string, unknown>;
+      const cleansedItem =
+        pickString(record.cleansedItem) ??
+        pickString(record.cleansedContent) ??
+        pickString(record.item) ??
+        pickString(record.field) ??
+        pickString(record.label) ??
+        `Item ${index + 1}`;
+      const tags = toStringArray(record.tags);
+      const sentiments = toStringArray(record.sentiments);
+      return {
+        id:
+          pickString(record.id) ??
+          pickString(record.cleansedId) ??
+          `enrichment-${index}`,
+        cleansedItem,
+        summary: pickString(record.summary),
+        tags,
+        sentiments,
+      };
+    })
+    .filter((row): row is EnrichmentDetailRow => Boolean(row));
 };
 
 const buildDefaultMetadata = (
@@ -199,6 +252,7 @@ export default function EnrichmentPage() {
   const [statusFeedback, setStatusFeedback] = useState<Feedback>({ state: "idle" });
   const [summaryFeedback, setSummaryFeedback] = useState<SummaryFeedback>({ state: "idle" });
   const [summary, setSummary] = useState<string | null>(null);
+  const [enrichmentDetails, setEnrichmentDetails] = useState<EnrichmentDetailRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(
     queryId ?? localSnapshot?.metadata.cleansedId ?? null,
   );
@@ -290,6 +344,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       if (!response.ok) {
         if (response.status === 404) {
           setSummary(null);
+          setEnrichmentDetails([]);
           setSummaryFeedback({ state: "idle" });
           return;
         }
@@ -300,9 +355,15 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
         );
       }
       const proxyPayload = (body as Record<string, unknown>) ?? {};
+      const normalizedDetails = normalizeProxyDetails(proxyPayload.details);
+      setEnrichmentDetails(normalizedDetails);
       const summarySource =
-        proxyPayload.body ?? proxyPayload.rawBody ?? rawBody ?? "Awaiting enrichment results.";
-      setSummary(extractSummary(summarySource));
+        (typeof proxyPayload.summary === "string" && proxyPayload.summary.trim().length
+          ? proxyPayload.summary
+          : proxyPayload.body ?? proxyPayload.rawBody ?? rawBody ?? "Awaiting enrichment results.");
+      const derivedSummary =
+        typeof summarySource === "string" ? summarySource : extractSummary(summarySource);
+      setSummary(derivedSummary ?? null);
       setSummaryFeedback({ state: "idle" });
     } catch (summaryError) {
       setSummaryFeedback({
@@ -573,6 +634,66 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
               </p>
             )}
           </div>
+          {enrichmentDetails.length > 0 && (
+            <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100 bg-white">
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Cleansed Item</th>
+                    <th className="px-4 py-3">Tags</th>
+                    <th className="px-4 py-3">Summary</th>
+                    <th className="px-4 py-3">Sentiments</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+                  {enrichmentDetails.map((detail) => (
+                    <tr key={detail.id}>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{detail.cleansedItem}</td>
+                      <td className="px-4 py-3">
+                        {detail.tags.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {detail.tags.map((tag) => (
+                              <span
+                                key={`${detail.id}-tag-${tag}`}
+                                className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {detail.summary ? (
+                          <p className="text-sm text-slate-800">{detail.summary}</p>
+                        ) : (
+                          <span className="text-slate-400">No summary available.</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {detail.sentiments.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {detail.sentiments.map((sentiment) => (
+                              <span
+                                key={`${detail.id}-sentiment-${sentiment}`}
+                                className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700"
+                              >
+                                {sentiment}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">

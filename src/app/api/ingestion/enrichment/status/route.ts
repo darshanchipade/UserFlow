@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const targetUrl = new URL(`/api/enrichment/status/${id}`, backendBaseUrl);
+    const targetUrl = new URL(`/api/enrichment/status`, backendBaseUrl);
+    targetUrl.searchParams.set("id", id);
     const upstream = await fetch(targetUrl);
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);

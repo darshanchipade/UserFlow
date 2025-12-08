@@ -175,20 +175,28 @@ export async function GET(request: NextRequest) {
 
     const rawContextBody = await contextResponse.text();
     const contextBody = safeParse(rawContextBody);
-
-    if (!contextResponse.ok) {
-      return NextResponse.json(
-        {
-          error: "Backend rejected the cleansed context request.",
-          rawBody: rawContextBody,
-          upstreamStatus: contextResponse.status,
-        },
-        { status: contextResponse.status },
-      );
-    }
-
     const rawStatusBody = await statusResponse.text();
     const normalizedStatus = statusResponse.ok ? normalizeStatusValue(rawStatusBody) : null;
+
+    if (!contextResponse.ok) {
+      const fallbackHistory = deriveHistory([], normalizedStatus, Date.now());
+      return NextResponse.json(
+        {
+          upstream: {
+            context: { status: contextResponse.status, ok: contextResponse.ok },
+            pipeline: { status: statusResponse.status, ok: statusResponse.ok },
+          },
+          body: {
+            statusHistory: fallbackHistory,
+            latestStatus: normalizedStatus,
+            startedAt: Date.now(),
+          },
+          rawBody: rawContextBody,
+          pipelineRawBody: rawStatusBody,
+        },
+        { status: statusResponse.ok ? 200 : statusResponse.status },
+      );
+    }
 
     const contextRecord = isRecord(contextBody) ? (contextBody as Record<string, unknown>) : {};
     const startedAtCandidate = pickNumber(contextRecord.startedAt) ?? pickNumber((contextRecord.metadata as Record<string, unknown>)?.startedAt) ?? Date.now();

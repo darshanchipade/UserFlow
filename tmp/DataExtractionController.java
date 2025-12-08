@@ -4,6 +4,7 @@ import com.apple.springboot.model.CleansedDataStore;
 import com.apple.springboot.repository.CleansedDataStoreRepository;
 import com.apple.springboot.service.DataIngestionService;
 import com.apple.springboot.service.EnrichmentPipelineService;
+import com.apple.springboot.service.EnrichmentReadService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,6 +37,7 @@ public class DataExtractionController {
 
     private final DataIngestionService dataIngestionService;
     private final EnrichmentPipelineService enrichmentPipelineService;
+    private final EnrichmentReadService enrichmentReadService;
 
     private final CleansedDataStoreRepository cleansedDataStoreRepository;
     private final ObjectMapper objectMapper;
@@ -55,9 +57,13 @@ public class DataExtractionController {
 
     @Autowired
     public DataExtractionController(DataIngestionService dataIngestionService,
-                                    EnrichmentPipelineService enrichmentPipelineService, CleansedDataStoreRepository cleansedDataStoreRepository, ObjectMapper objectMapper) {
+                                    EnrichmentPipelineService enrichmentPipelineService,
+                                    EnrichmentReadService enrichmentReadService,
+                                    CleansedDataStoreRepository cleansedDataStoreRepository,
+                                    ObjectMapper objectMapper) {
         this.dataIngestionService = dataIngestionService;
         this.enrichmentPipelineService = enrichmentPipelineService;
+        this.enrichmentReadService = enrichmentReadService;
         this.cleansedDataStoreRepository = cleansedDataStoreRepository;
         this.objectMapper = objectMapper;
     }
@@ -168,6 +174,42 @@ private String deriveSourceIdentifier(MultipartFile file) {
         return cleansedDataStoreRepository.findById(id)
                 .map(store -> normalizeStatus(store.getStatus()))
                 .orElse("NOT_FOUND");
+    }
+
+    @Operation(
+            summary = "Fetch cleansed context snapshot",
+            description = "Returns metadata and cached cleansed items for the provided cleansed data ID.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Context returned successfully"),
+            @ApiResponse(responseCode = "404", description = "Cleansed record not found")
+    })
+    @GetMapping("/cleansed-context/{id}")
+    public ResponseEntity<?> getCleansedContext(
+            @Parameter(description = "UUID of the cleansed data entry", required = true)
+            @PathVariable UUID id) {
+        return enrichmentReadService
+                .loadCleansedContext(id)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("CleansedDataStore not found for id " + id));
+    }
+
+    @Operation(
+            summary = "Fetch enrichment result",
+            description = "Returns enriched content elements and metrics for the provided cleansed data ID.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Enrichment result returned successfully"),
+            @ApiResponse(responseCode = "404", description = "Enrichment result not found")
+    })
+    @GetMapping("/enrichment/result/{id}")
+    public ResponseEntity<?> getEnrichmentResult(
+            @Parameter(description = "UUID of the cleansed data entry", required = true)
+            @PathVariable UUID id) {
+        return enrichmentReadService
+                .loadEnrichmentResult(id)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("Enrichment result not found for id " + id));
     }
 
     @Operation(

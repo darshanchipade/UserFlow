@@ -536,8 +536,8 @@ export default function CleansingPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {items.map((row) => (
-                    <tr key={row.id}>
+                  {items.map((row, index) => (
+                    <tr key={row.id ?? `${row.field ?? "row"}-${index}`}>
                       <td className="px-4 py-3 align-top font-semibold text-slate-900">
                         {row.field}
                       </td>

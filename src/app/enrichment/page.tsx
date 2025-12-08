@@ -20,18 +20,36 @@ type SummaryFeedback = {
   message?: string;
 };
 
-type EnrichmentDetailRow = {
-  id: string;
-  cleansedItem: string;
-  summary?: string;
-  tags: string[];
-  sentiments: string[];
-};
-
 type RemoteEnrichmentContext = {
   metadata: EnrichmentContext["metadata"];
   startedAt: number;
   statusHistory: { status: string; timestamp: number }[];
+};
+
+type SentimentSnapshot = {
+  label: string;
+  score?: number;
+};
+
+type EnrichedElement = {
+  id: string;
+  title: string;
+  path?: string;
+  copy?: string;
+  summary?: string;
+  classification: string[];
+  keywords: string[];
+  tags: string[];
+  sentiment?: SentimentSnapshot | null;
+};
+
+type EnrichmentOverview = {
+  metrics: {
+    totalFieldsTagged?: number | null;
+    readabilityDelta?: number | null;
+    errorsFound?: number | null;
+  };
+  elements: EnrichedElement[];
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -40,7 +58,6 @@ const STATUS_LABELS: Record<string, string> = {
   ENRICHMENT_RUNNING: "Enrichment running",
   PARTIALLY_ENRICHED: "Partially enriched",
   ENRICHMENT_COMPLETE: "Enrichment complete",
-  ENRICHED_COMPLETE: "Enrichment complete",
   ERROR: "Failed",
 };
 
@@ -77,13 +94,266 @@ const STATUS_COLORS: Record<string, { className: string; dot: string; background
   },
 };
 
-const STATUS_SEQUENCE = [
-  "ENRICHMENT_TRIGGERED",
-  "WAITING_FOR_RESULTS",
-  "ENRICHMENT_RUNNING",
-  "PARTIALLY_ENRICHED",
-  "ENRICHMENT_COMPLETE",
-];
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null;
+};
+
+const normalizeStringList = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (typeof entry === "string") return entry.trim();
+        if (isRecord(entry)) {
+          return (
+            pickString(entry.label) ??
+            pickString(entry.name) ??
+            pickString(entry.value) ??
+            pickString(entry.text) ??
+            undefined
+          );
+        }
+        return undefined;
+      })
+      .filter((entry): entry is string => Boolean(entry));
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/[,|]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  if (isRecord(value)) {
+    if (Array.isArray(value.values)) return normalizeStringList(value.values);
+    if (Array.isArray(value.items)) return normalizeStringList(value.items);
+    if (Array.isArray(value.labels)) return normalizeStringList(value.labels);
+    if (Array.isArray(value.tags)) return normalizeStringList(value.tags);
+  }
+  return [];
+};
+
+const pickFromSources = (sources: Record<string, unknown>[], keys: string[]): string | undefined => {
+  for (const key of keys) {
+    for (const source of sources) {
+      const candidate = pickString(source[key]);
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+  return undefined;
+};
+
+const pickListFromSources = (sources: Record<string, unknown>[], keys: string[]): string[] => {
+  for (const key of keys) {
+    for (const source of sources) {
+      const candidate = source[key];
+      const normalized = normalizeStringList(candidate);
+      if (normalized.length) {
+        return normalized;
+      }
+    }
+  }
+  return [];
+};
+
+const extractSentimentFromSources = (
+  sources: Record<string, unknown>[],
+): SentimentSnapshot | null => {
+  for (const source of sources) {
+    const directLabel =
+      pickString(source.sentiment) ??
+      pickString(source.sentimentLabel) ??
+      pickString(source.tone) ??
+      pickString(source.mood);
+    const scoreCandidate =
+      pickNumber(source.sentimentScore) ??
+      pickNumber(source.score) ??
+      pickNumber(source.sentimentConfidence);
+
+    if (directLabel) {
+      return { label: directLabel, score: scoreCandidate };
+    }
+
+    const nested =
+      (isRecord(source.sentiment) ? (source.sentiment as Record<string, unknown>) : null) ??
+      (isRecord(source.sentimentAnalysis)
+        ? (source.sentimentAnalysis as Record<string, unknown>)
+        : null);
+
+    if (nested) {
+      const nestedLabel =
+        pickString(nested.label) ?? pickString(nested.result) ?? pickString(nested.tone);
+      if (nestedLabel) {
+        return {
+          label: nestedLabel,
+          score: pickNumber(nested.score) ?? pickNumber(nested.confidence) ?? scoreCandidate,
+        };
+      }
+    }
+  }
+  return null;
+};
+
+const findFirstRecordArray = (payload: unknown, depth = 0): Record<string, unknown>[] => {
+  if (depth > 5 || payload === null || payload === undefined) return [];
+  if (Array.isArray(payload)) {
+    const records = payload.filter(isRecord);
+    if (records.length) {
+      return records;
+    }
+    for (const entry of payload) {
+      const nested = findFirstRecordArray(entry, depth + 1);
+      if (nested.length) {
+        return nested;
+      }
+    }
+    return [];
+  }
+
+  if (isRecord(payload)) {
+    for (const value of Object.values(payload)) {
+      if (Array.isArray(value)) {
+        const records = value.filter(isRecord);
+        if (records.length) {
+          return records;
+        }
+      }
+    }
+    for (const value of Object.values(payload)) {
+      const nested = findFirstRecordArray(value, depth + 1);
+      if (nested.length) {
+        return nested;
+      }
+    }
+  }
+
+  return [];
+};
+
+const findNumberByKeys = (payload: unknown, keys: string[], depth = 0): number | undefined => {
+  if (depth > 5 || payload === null || payload === undefined) return undefined;
+  if (isRecord(payload)) {
+    for (const key of keys) {
+      if (key in payload) {
+        const candidate = pickNumber(payload[key]);
+        if (candidate !== undefined) {
+          return candidate;
+        }
+      }
+    }
+    for (const value of Object.values(payload)) {
+      const nested = findNumberByKeys(value, keys, depth + 1);
+      if (nested !== undefined) {
+        return nested;
+      }
+    }
+  } else if (Array.isArray(payload)) {
+    for (const value of payload) {
+      const nested = findNumberByKeys(value, keys, depth + 1);
+      if (nested !== undefined) {
+        return nested;
+      }
+    }
+  }
+  return undefined;
+};
+
+const parseEnrichmentMetrics = (payload: unknown): EnrichmentOverview["metrics"] => {
+  return {
+    totalFieldsTagged: findNumberByKeys(payload, [
+      "totalFieldsTagged",
+      "fieldsTagged",
+      "taggedFields",
+      "totalFields",
+      "fieldCount",
+    ]),
+    readabilityDelta: findNumberByKeys(payload, [
+      "readabilityImproved",
+      "readabilityDelta",
+      "readabilityScoreDelta",
+      "readability",
+    ]),
+    errorsFound: findNumberByKeys(payload, ["errorsFound", "errorCount", "errors"]),
+  };
+};
+
+const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
+  if (!payload) {
+    return { metrics: {}, elements: [] };
+  }
+
+  const baseRecord =
+    isRecord(payload) && payload.body && typeof payload.body === "object"
+      ? (payload.body as Record<string, unknown>)
+      : payload;
+
+  const metrics = parseEnrichmentMetrics(baseRecord);
+  const sectionRecords = findFirstRecordArray(baseRecord);
+
+  if (!sectionRecords.length) {
+    return { metrics, elements: [] };
+  }
+
+  const elements = sectionRecords.map((record, index) => {
+    const sources: Record<string, unknown>[] = [record];
+    const nestedKeys = ["data", "attributes", "meta", "context", "details", "fields"];
+    nestedKeys.forEach((key) => {
+      const candidate = record[key];
+      if (isRecord(candidate)) {
+        sources.push(candidate);
+      }
+    });
+
+    const id =
+      pickFromSources(sources, ["id", "sectionId", "elementId", "contentId", "hash"]) ??
+      `element-${index}`;
+    const title =
+      pickFromSources(sources, ["title", "label", "name", "field", "section", "heading"]) ??
+      `Element ${index + 1}`;
+    const path =
+      pickFromSources(sources, ["path", "breadcrumb", "hierarchy", "location"]) ??
+      pickFromSources(sources, ["parent", "group", "category"]);
+    const copy =
+      pickFromSources(sources, [
+        "copy",
+        "content",
+        "text",
+        "value",
+        "enrichedCopy",
+        "output",
+        "body",
+      ]) ?? undefined;
+    const summaryValue =
+      pickFromSources(sources, ["summary", "aiSummary", "insights", "analysis", "result"]) ??
+      copy ??
+      undefined;
+
+    const classification = pickListFromSources(sources, [
+      "classification",
+      "classifications",
+      "categories",
+      "category",
+      "taxonomy",
+    ]);
+    const keywords = pickListFromSources(sources, ["keywords", "keywordList", "searchKeywords"]);
+    const tags = pickListFromSources(sources, ["tags", "labels", "contentTags", "tagList"]);
+    const sentiment = extractSentimentFromSources(sources);
+
+    return {
+      id,
+      title,
+      path: path ?? undefined,
+      copy,
+      summary: summaryValue,
+      classification,
+      keywords,
+      tags,
+      sentiment,
+    };
+  });
+
+  return { metrics, elements };
+};
 
 const FALLBACK_HISTORY: EnrichmentContext["statusHistory"] = [
   { status: "ENRICHMENT_TRIGGERED", timestamp: 0 },
@@ -114,151 +384,6 @@ const pickNumber = (value: unknown) => {
     return value;
   }
   return undefined;
-};
-
-const formatTimestamp = (value?: number | null) => {
-  if (!value) {
-    return "—";
-  }
-  return new Date(value).toLocaleString();
-};
-
-const toStringArray = (value: unknown): string[] => {
-  if (!value) return [];
-  if (Array.isArray(value)) {
-    return value
-      .map((entry) => (typeof entry === "string" ? entry.trim() : undefined))
-      .filter((entry): entry is string => Boolean(entry && entry.length));
-  }
-  if (typeof value === "string" && value.trim().length) {
-    return value
-      .split(",")
-      .map((token) => token.trim())
-      .filter(Boolean);
-  }
-  return [];
-};
-
-const normalizeProxyDetails = (payload: unknown): EnrichmentDetailRow[] => {
-  if (!Array.isArray(payload)) return [];
-  return payload
-    .map((entry, index) => {
-      if (!entry || typeof entry !== "object") return null;
-      const record = entry as Record<string, unknown>;
-      const cleansedItem =
-        pickString(record.cleansedItem) ??
-        pickString(record.cleansedContent) ??
-        pickString(record.item) ??
-        pickString(record.field) ??
-        pickString(record.label) ??
-        `Item ${index + 1}`;
-      const summary =
-        pickString(record.summary) ??
-        pickString(record.aiSummary) ??
-        pickString(record.description) ??
-        pickString(record.content);
-      const tags = toStringArray(record.tags);
-      const sentiments = toStringArray(record.sentiments);
-      return {
-        id:
-          pickString(record.id) ??
-          pickString(record.cleansedId) ??
-          `enrichment-${index}`,
-        cleansedItem,
-        summary: summary ?? undefined,
-        tags,
-        sentiments,
-      };
-    })
-    .filter((row): row is EnrichmentDetailRow => Boolean(row));
-};
-
-const buildSummaryFromDetails = (details: EnrichmentDetailRow[]): string | undefined => {
-  if (!details.length) {
-    return undefined;
-  }
-  return details
-    .map((detail) => {
-      const summaryLine = detail.summary ?? "Awaiting summary.";
-      const tagsLine = detail.tags.length ? `Tags: ${detail.tags.join(", ")}` : null;
-      const sentimentsLine = detail.sentiments.length
-        ? `Sentiments: ${detail.sentiments.join(", ")}`
-        : null;
-      return [`${detail.cleansedItem}: ${summaryLine}`, tagsLine, sentimentsLine]
-        .filter(Boolean)
-        .join("\n");
-    })
-    .join("\n\n");
-};
-
-const normalizePipelineStatus = (value?: string | null) => {
-  if (!value || typeof value !== "string") return undefined;
-  const normalized = value.trim().replace(/[\s-]+/g, "_").toUpperCase();
-  if (normalized === "ENRICHED_COMPLETE") {
-    return "ENRICHMENT_COMPLETE";
-  }
-  return normalized;
-};
-
-const buildHistoryForStatus = (status: string, baseTimestamp: number) => {
-  const normalized = normalizePipelineStatus(status);
-  if (!normalized) return null;
-  const index = STATUS_SEQUENCE.indexOf(normalized);
-  const steps = index >= 0 ? STATUS_SEQUENCE.slice(0, index + 1) : [normalized];
-  return steps.map((step, idx) => ({
-    status: step,
-    timestamp: baseTimestamp + idx,
-  }));
-};
-
-const extractHistoryFromRecord = (
-  payload: unknown,
-  defaultTimestamp: number,
-): RemoteEnrichmentContext["statusHistory"] | null => {
-  if (!payload || typeof payload !== "object") {
-    if (typeof payload === "string") {
-      return buildHistoryForStatus(payload, defaultTimestamp);
-    }
-    return null;
-  }
-  const record = payload as Record<string, unknown>;
-  const directHistory = record.statusHistory;
-  if (Array.isArray(directHistory)) {
-    return directHistory.filter((entry): entry is { status: string; timestamp: number } => {
-      return (
-        !!entry &&
-        typeof entry === "object" &&
-        typeof entry.status === "string" &&
-        typeof entry.timestamp === "number"
-      );
-    });
-  }
-  const nested = record.body;
-  if (nested && typeof nested === "object") {
-    const nestedHistory = (nested as Record<string, unknown>).statusHistory;
-    if (Array.isArray(nestedHistory)) {
-      return nestedHistory.filter((entry): entry is { status: string; timestamp: number } => {
-        return (
-          !!entry &&
-          typeof entry === "object" &&
-          typeof entry.status === "string" &&
-          typeof entry.timestamp === "number"
-        );
-      });
-    }
-  }
-  const fallbackStatus =
-    normalizePipelineStatus(pickString(record.status)) ??
-    normalizePipelineStatus(pickString(record.pipelineStatus)) ??
-    normalizePipelineStatus(pickString(record.state)) ??
-    normalizePipelineStatus(pickString(record.currentStatus)) ??
-    normalizePipelineStatus(typeof payload === "string" ? payload : undefined);
-
-  if (fallbackStatus) {
-    return buildHistoryForStatus(fallbackStatus, defaultTimestamp);
-  }
-
-  return null;
 };
 
 const buildDefaultMetadata = (
@@ -360,8 +485,9 @@ export default function EnrichmentPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFeedback, setStatusFeedback] = useState<Feedback>({ state: "idle" });
   const [summaryFeedback, setSummaryFeedback] = useState<SummaryFeedback>({ state: "idle" });
-  const [summary, setSummary] = useState<string | null>(null);
-  const [enrichmentDetails, setEnrichmentDetails] = useState<EnrichmentDetailRow[]>([]);
+  const [enrichmentResult, setEnrichmentResult] = useState<EnrichmentOverview | null>(null);
+  const [rawSummary, setRawSummary] = useState<string | null>(null);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(
     queryId ?? localSnapshot?.metadata.cleansedId ?? null,
   );
@@ -374,24 +500,6 @@ export default function EnrichmentPage() {
 const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> => {
   const response = await fetch(`/api/ingestion/enrichment/status?id=${encodeURIComponent(id)}`);
   const { body, rawBody } = await parseJson(response);
-
-  const proxyPayload = (body as Record<string, unknown>) ?? {};
-  const upstreamOk =
-    typeof proxyPayload.upstreamOk === "boolean" ? proxyPayload.upstreamOk : response.ok;
-
-  if (!upstreamOk) {
-    const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
-    const fallbackHistory =
-      localSnapshot?.statusHistory && localSnapshot.statusHistory.length
-        ? localSnapshot.statusHistory
-        : FALLBACK_HISTORY;
-    return {
-      metadata: fallbackMetadata,
-      startedAt: localSnapshot?.startedAt ?? Date.now(),
-      statusHistory: fallbackHistory,
-    };
-  }
-
   if (!response.ok) {
     throw new Error(
       (body as Record<string, unknown>)?.error as string ??
@@ -399,60 +507,30 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
         "Backend rejected the enrichment status request.",
     );
   }
-
-  const backendPayload =
-    "body" in proxyPayload ? proxyPayload.body : (proxyPayload as unknown);
-  const backendRecord =
-    backendPayload && typeof backendPayload === "object"
-      ? (backendPayload as Record<string, unknown>)
+    const proxyPayload = (body as Record<string, unknown>) ?? {};
+    let backendRecord: Record<string, unknown> | null = null;
+    if (proxyPayload.body && typeof proxyPayload.body === "object") {
+      backendRecord = proxyPayload.body as Record<string, unknown>;
+    } else if (!("body" in proxyPayload) && typeof proxyPayload === "object") {
+      backendRecord = proxyPayload;
+    }
+    const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
+    const mergedMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
+    const backendHistory = Array.isArray(
+      backendRecord?.["statusHistory"] as { status: string; timestamp: number }[] | undefined,
+    )
+      ? (backendRecord?.["statusHistory"] as { status: string; timestamp: number }[])
       : null;
-  const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
-  const mergedMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
-  const now = Date.now();
-  let history: RemoteEnrichmentContext["statusHistory"] | null = null;
-  if (Array.isArray(backendRecord?.["statusHistory"])) {
-    history = backendRecord?.["statusHistory"] as { status: string; timestamp: number }[];
-  } else {
-    history =
-      extractHistoryFromRecord(backendPayload, now) ??
-      extractHistoryFromRecord(proxyPayload, now);
-  }
 
-  const inferredHistory =
-    history && history.length
-      ? history
-      : (() => {
-          const fallbackStatus =
-            normalizePipelineStatus(
-              pickString(
-                backendRecord?.status ??
-                  backendRecord?.pipelineStatus ??
-                  backendRecord?.state ??
-                  backendRecord?.currentStatus,
-              ),
-            ) ??
-            normalizePipelineStatus(pickString(proxyPayload.status)) ??
-            normalizePipelineStatus(pickString(proxyPayload.pipelineStatus)) ??
-            normalizePipelineStatus(pickString(proxyPayload.state)) ??
-            normalizePipelineStatus(pickString(proxyPayload.currentStatus)) ??
-            normalizePipelineStatus(
-              typeof backendPayload === "string" ? backendPayload : undefined,
-            );
-          if (!fallbackStatus) {
-            return null;
-          }
-          return buildHistoryForStatus(fallbackStatus, now);
-        })();
-
-  return {
-    metadata: mergedMetadata,
-    startedAt:
-      pickNumber(backendRecord?.startedAt) ??
-      pickNumber(proxyPayload.startedAt) ??
-      Date.now(),
-    statusHistory: inferredHistory && inferredHistory.length ? inferredHistory : FALLBACK_HISTORY,
+    return {
+      metadata: mergedMetadata,
+      startedAt:
+        pickNumber(backendRecord?.startedAt) ??
+        pickNumber(proxyPayload.startedAt) ??
+        Date.now(),
+      statusHistory: backendHistory && backendHistory.length ? backendHistory : FALLBACK_HISTORY,
+    };
   };
-};
 
   const loadContext = async (
     id: string | null,
@@ -500,8 +578,8 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       const { body, rawBody } = await parseJson(response);
       if (!response.ok) {
         if (response.status === 404) {
-          setSummary(null);
-          setEnrichmentDetails([]);
+          setEnrichmentResult(null);
+          setRawSummary("Awaiting enrichment results.");
           setSummaryFeedback({ state: "idle" });
           return;
         }
@@ -512,22 +590,19 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
         );
       }
       const proxyPayload = (body as Record<string, unknown>) ?? {};
-      const normalizedDetails = normalizeProxyDetails(proxyPayload.details);
-      setEnrichmentDetails(normalizedDetails);
-      const combinedDetailSummary = buildSummaryFromDetails(normalizedDetails);
+      const normalized = normalizeEnrichmentResult(proxyPayload);
+      setEnrichmentResult(normalized);
       const summarySource =
-        (typeof proxyPayload.summary === "string" && proxyPayload.summary.trim().length
-          ? proxyPayload.summary
-          : combinedDetailSummary ??
-            proxyPayload.body ??
-            proxyPayload.rawBody ??
-            rawBody ??
-            "Awaiting enrichment results.");
-      const derivedSummary =
-        typeof summarySource === "string" ? summarySource : extractSummary(summarySource);
-      setSummary(derivedSummary ?? combinedDetailSummary ?? null);
+        proxyPayload.body ?? proxyPayload.rawBody ?? rawBody ?? "Awaiting enrichment results.";
+      if (!normalized.elements.length) {
+        setRawSummary(extractSummary(summarySource));
+      } else {
+        setRawSummary(null);
+      }
       setSummaryFeedback({ state: "idle" });
     } catch (summaryError) {
+      setEnrichmentResult(null);
+      setRawSummary(null);
       setSummaryFeedback({
         state: "error",
         message: summaryError instanceof Error ? summaryError.message : "Unable to load enrichment results.",
@@ -546,6 +621,19 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context?.metadata.cleansedId]);
+
+  useEffect(() => {
+    if (enrichmentResult?.elements.length) {
+      setSelectedElementId((current) => {
+        if (current && enrichmentResult.elements.some((element) => element.id === current)) {
+          return current;
+        }
+        return enrichmentResult.elements[0]?.id ?? null;
+      });
+    } else {
+      setSelectedElementId(null);
+    }
+  }, [enrichmentResult?.elements]);
 
   const statusHistory = context?.statusHistory?.length
     ? context.statusHistory
@@ -572,6 +660,48 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     const derivedIndex = Math.min(statusHistory.length, statuses.length);
     return (derivedIndex / statuses.length) * 100;
   }, [currentStatus, statusHistory.length]);
+
+  const metrics = enrichmentResult?.metrics ?? {};
+  const totalFieldsTagged =
+    metrics.totalFieldsTagged !== null && metrics.totalFieldsTagged !== undefined
+      ? Math.round(metrics.totalFieldsTagged)
+      : null;
+  const readabilityDelta =
+    metrics.readabilityDelta !== null && metrics.readabilityDelta !== undefined
+      ? metrics.readabilityDelta
+      : null;
+  const errorsFoundMetric =
+    metrics.errorsFound !== null && metrics.errorsFound !== undefined ? metrics.errorsFound : null;
+  const readabilityDisplay =
+    readabilityDelta !== null ? `${readabilityDelta > 0 ? "+" : ""}${Math.round(readabilityDelta)}%` : null;
+  const errorsDisplay = errorsFoundMetric !== null ? Math.round(errorsFoundMetric) : null;
+
+  const selectedElement = useMemo(() => {
+    if (!enrichmentResult?.elements.length) return null;
+    if (selectedElementId) {
+      const match = enrichmentResult.elements.find((element) => element.id === selectedElementId);
+      if (match) return match;
+    }
+    return enrichmentResult.elements[0] ?? null;
+  }, [enrichmentResult?.elements, selectedElementId]);
+
+  const renderChipList = (items: string[], emptyLabel: string) => {
+    if (!items.length) {
+      return <p className="text-sm text-slate-500">{emptyLabel}</p>;
+    }
+    return (
+      <div className="flex flex-wrap gap-2">
+        {items.map((item) => (
+          <span
+            key={item}
+            className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700"
+          >
+            {item}
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   const handleRefreshStatus = async () => {
     if (!activeId) {
@@ -701,6 +831,24 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
               Refresh Status
             </button>
           </div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Total fields tagged</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">
+                {totalFieldsTagged ?? "—"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Readability improved</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">
+                {readabilityDisplay ?? "—"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Errors found</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{errorsDisplay ?? "—"}</p>
+            </div>
+          </div>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Cleansed ID</p>
@@ -721,15 +869,15 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Started at</p>
               <p className="text-sm font-semibold text-slate-900">
-                {formatTimestamp(context.startedAt)}
+                {new Date(context.startedAt).toLocaleString()}
               </p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Last update</p>
               <p className="text-sm font-semibold text-slate-900">
-                {formatTimestamp(
+                {new Date(
                   statusHistory[statusHistory.length - 1]?.timestamp ?? context.startedAt,
-                )}
+                ).toLocaleString()}
               </p>
             </div>
           </div>
@@ -752,7 +900,9 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
                   <p className={`text-sm font-semibold ${meta.className}`}>
                     {STATUS_LABELS[entry.status] ?? entry.status}
                   </p>
-                  <p className="text-xs text-slate-500">{formatTimestamp(entry.timestamp)}</p>
+                  <p className="text-xs text-slate-500">
+                    {new Date(entry.timestamp).toLocaleString()}
+                  </p>
                 </div>
               );
             })}
@@ -769,101 +919,131 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
               Read-only snapshot of the most recent enrichment output.
             </span>
           </div>
-          <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700">
-            {summaryFeedback.state === "loading" ? (
-              <p>Loading enrichment summary…</p>
-            ) : summaryFeedback.state === "error" ? (
-              <div>
-                <p className="font-semibold text-amber-700">Unable to load enrichment summary.</p>
-                <p className="text-xs text-slate-600">{summaryFeedback.message}</p>
-                <button
-                  type="button"
-                  onClick={() => context.metadata.cleansedId && fetchSummary(context.metadata.cleansedId, true)}
-                  className="mt-3 rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
-                >
-                  Retry
-                </button>
+          {summaryFeedback.state === "loading" ? (
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+              Loading enrichment summary…
+            </div>
+          ) : summaryFeedback.state === "error" ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="font-semibold text-amber-800">Unable to load enrichment summary.</p>
+              <p className="text-xs text-amber-900/80">{summaryFeedback.message}</p>
+              <button
+                type="button"
+                onClick={() => context.metadata.cleansedId && fetchSummary(context.metadata.cleansedId, true)}
+                className="mt-3 rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
+              >
+                Retry
+              </button>
+            </div>
+          ) : enrichmentResult?.elements.length ? (
+            <div className="mt-6 grid gap-6 xl:grid-cols-[300px,1fr]">
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Enriched elements</p>
+                <div className="mt-3 max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                  {enrichmentResult.elements.map((element) => {
+                    const isActive = element.id === selectedElementId || (!selectedElementId && element.id === enrichmentResult.elements[0]?.id);
+                    return (
+                      <button
+                        key={element.id}
+                        type="button"
+                        onClick={() => setSelectedElementId(element.id)}
+                        className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                          isActive
+                            ? "border-indigo-200 bg-white shadow-sm"
+                            : "border-transparent bg-transparent hover:border-slate-200 hover:bg-white"
+                        }`}
+                      >
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          {element.path ?? "Enriched element"}
+                        </p>
+                        <p className="text-sm font-semibold text-slate-900">{element.title}</p>
+                        <p className="mt-1 truncate text-xs text-slate-500">
+                          {element.copy ?? element.summary ?? "No preview available."}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            ) : summary ? (
-              <pre className="whitespace-pre-wrap text-sm text-slate-800">{summary}</pre>
-            ) : (
-              <p>
-                Awaiting enrichment results. Once the backend finishes generating AI insights,
-                they’ll appear here automatically. Use the “Refresh status” button above to check
-                for updates.
-              </p>
-            )}
-          </div>
-          {enrichmentDetails.length > 0 && (
-            <div className="mt-4 max-h-[420px] space-y-4 overflow-y-auto pr-1">
-              {enrichmentDetails.map((detail) => (
-                <div
-                  key={detail.id}
-                  className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{detail.cleansedItem}</p>
-                      <p className="text-xs text-slate-500">AI-derived insight</p>
-                    </div>
-                    {detail.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {detail.tags.map((tag) => (
-                          <span
-                            key={`${detail.id}-header-tag-${tag}`}
-                            className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700"
-                          >
-                            {tag}
-                          </span>
-                        ))}
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-100 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">Enriched copy</p>
+                  <p className="mt-2 text-sm text-slate-800">
+                    {selectedElement?.copy ?? "No enriched copy provided yet."}
+                  </p>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-100 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          Content insights
+                        </p>
+                        <h3 className="text-base font-semibold text-slate-900">Summary</h3>
                       </div>
-                    )}
-                  </div>
-                  <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-800">
-                    {detail.summary ?? "Summary pending from enrichment pipeline."}
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-4">
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        Tags
-                      </p>
-                      {detail.tags.length ? (
-                        <div className="flex flex-wrap gap-1">
-                          {detail.tags.map((tag) => (
-                            <span
-                              key={`${detail.id}-tag-${tag}`}
-                              className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-slate-400">—</p>
+                      <span className="text-xs font-semibold text-slate-500">
+                        {selectedElement?.classification?.length ? "2 fields" : "1 field"}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm text-slate-700">
+                      {selectedElement?.summary ?? "Summary not available yet."}
+                    </p>
+                    <div className="mt-4">
+                      <p className="text-xs uppercase tracking-wide text-slate-400">Classification</p>
+                      {renderChipList(
+                        selectedElement?.classification ?? [],
+                        "No classification detected.",
                       )}
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        Sentiments
-                      </p>
-                      {detail.sentiments.length ? (
-                        <div className="flex flex-wrap gap-1">
-                          {detail.sentiments.map((sentiment) => (
-                            <span
-                              key={`${detail.id}-sentiment-${sentiment}`}
-                              className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700"
-                            >
-                              {sentiment}
-                            </span>
-                          ))}
-                        </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Search metadata</p>
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">Keywords</p>
+                        {renderChipList(
+                          selectedElement?.keywords ?? [],
+                          "Keywords pending enrichment.",
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">Content tags</p>
+                        {renderChipList(selectedElement?.tags ?? [], "Tags pending enrichment.")}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Tone & sentiment</p>
+                    <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                      {selectedElement?.sentiment ? (
+                        <>
+                          <p className="text-sm font-semibold text-emerald-700">
+                            {selectedElement.sentiment.label}
+                          </p>
+                          {selectedElement.sentiment.score !== undefined && (
+                            <p className="text-xs text-emerald-800">
+                              Score: {Math.round(selectedElement.sentiment.score * 100) / 100}
+                            </p>
+                          )}
+                        </>
                       ) : (
-                        <p className="text-xs text-slate-400">—</p>
+                        <p className="text-sm text-emerald-800/80">
+                          Sentiment analytics will appear after enrichment completes.
+                        </p>
                       )}
                     </div>
                   </div>
                 </div>
-              ))}
+              </div>
+            </div>
+          ) : rawSummary ? (
+            <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700">
+              <pre className="whitespace-pre-wrap">{rawSummary}</pre>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-500">
+              Awaiting enrichment results. Once the backend finishes generating AI insights, they’ll
+              appear here automatically. Use the “Refresh status” button above to check for updates.
             </div>
           )}
         </section>

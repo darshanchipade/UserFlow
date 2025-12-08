@@ -440,6 +440,14 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
         "copyValue",
         "aiCopy",
         "ai_copy",
+        "cleansedText",
+        "cleansed_text",
+        "cleansedValue",
+        "cleansed_value",
+        "cleansedContent",
+        "cleansed_content",
+        "cleansedCopy",
+        "cleansed_copy",
       ]) ?? undefined;
     const summaryValue =
       pickFromSources(sources, ["summary", "aiSummary", "insights", "analysis", "result"]) ??

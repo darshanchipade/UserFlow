@@ -355,10 +355,10 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
   return { metrics, elements };
 };
 
-const FALLBACK_HISTORY = [
-  { status: "ENRICHMENT_TRIGGERED", timestamp: Date.now() },
-  { status: "WAITING_FOR_RESULTS", timestamp: Date.now() },
-] satisfies EnrichmentContext["statusHistory"];
+const FALLBACK_HISTORY: EnrichmentContext["statusHistory"] = [
+  { status: "ENRICHMENT_TRIGGERED", timestamp: 0 },
+  { status: "WAITING_FOR_RESULTS", timestamp: 0 },
+];
 
 const parseJson = async (response: Response) => {
   const rawBody = await response.text();

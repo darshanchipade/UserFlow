@@ -26,6 +26,32 @@ type RemoteEnrichmentContext = {
   statusHistory: { status: string; timestamp: number }[];
 };
 
+type SentimentSnapshot = {
+  label: string;
+  score?: number;
+};
+
+type EnrichedElement = {
+  id: string;
+  title: string;
+  path?: string;
+  copy?: string;
+  summary?: string;
+  classification: string[];
+  keywords: string[];
+  tags: string[];
+  sentiment?: SentimentSnapshot | null;
+};
+
+type EnrichmentOverview = {
+  metrics: {
+    totalFieldsTagged?: number | null;
+    readabilityDelta?: number | null;
+    errorsFound?: number | null;
+  };
+  elements: EnrichedElement[];
+};
+
 const STATUS_LABELS: Record<string, string> = {
   ENRICHMENT_TRIGGERED: "Queued for enrichment",
   WAITING_FOR_RESULTS: "Awaiting AI output",
@@ -66,6 +92,267 @@ const STATUS_COLORS: Record<string, { className: string; dot: string; background
     dot: "bg-rose-400",
     background: "bg-rose-50",
   },
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null;
+};
+
+const normalizeStringList = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (typeof entry === "string") return entry.trim();
+        if (isRecord(entry)) {
+          return (
+            pickString(entry.label) ??
+            pickString(entry.name) ??
+            pickString(entry.value) ??
+            pickString(entry.text) ??
+            undefined
+          );
+        }
+        return undefined;
+      })
+      .filter((entry): entry is string => Boolean(entry));
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/[,|]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  if (isRecord(value)) {
+    if (Array.isArray(value.values)) return normalizeStringList(value.values);
+    if (Array.isArray(value.items)) return normalizeStringList(value.items);
+    if (Array.isArray(value.labels)) return normalizeStringList(value.labels);
+    if (Array.isArray(value.tags)) return normalizeStringList(value.tags);
+  }
+  return [];
+};
+
+const pickFromSources = (sources: Record<string, unknown>[], keys: string[]): string | undefined => {
+  for (const key of keys) {
+    for (const source of sources) {
+      const candidate = pickString(source[key]);
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+  return undefined;
+};
+
+const pickListFromSources = (sources: Record<string, unknown>[], keys: string[]): string[] => {
+  for (const key of keys) {
+    for (const source of sources) {
+      const candidate = source[key];
+      const normalized = normalizeStringList(candidate);
+      if (normalized.length) {
+        return normalized;
+      }
+    }
+  }
+  return [];
+};
+
+const extractSentimentFromSources = (
+  sources: Record<string, unknown>[],
+): SentimentSnapshot | null => {
+  for (const source of sources) {
+    const directLabel =
+      pickString(source.sentiment) ??
+      pickString(source.sentimentLabel) ??
+      pickString(source.tone) ??
+      pickString(source.mood);
+    const scoreCandidate =
+      pickNumber(source.sentimentScore) ??
+      pickNumber(source.score) ??
+      pickNumber(source.sentimentConfidence);
+
+    if (directLabel) {
+      return { label: directLabel, score: scoreCandidate };
+    }
+
+    const nested =
+      (isRecord(source.sentiment) ? (source.sentiment as Record<string, unknown>) : null) ??
+      (isRecord(source.sentimentAnalysis)
+        ? (source.sentimentAnalysis as Record<string, unknown>)
+        : null);
+
+    if (nested) {
+      const nestedLabel =
+        pickString(nested.label) ?? pickString(nested.result) ?? pickString(nested.tone);
+      if (nestedLabel) {
+        return {
+          label: nestedLabel,
+          score: pickNumber(nested.score) ?? pickNumber(nested.confidence) ?? scoreCandidate,
+        };
+      }
+    }
+  }
+  return null;
+};
+
+const findFirstRecordArray = (payload: unknown, depth = 0): Record<string, unknown>[] => {
+  if (depth > 5 || payload === null || payload === undefined) return [];
+  if (Array.isArray(payload)) {
+    const records = payload.filter(isRecord);
+    if (records.length) {
+      return records;
+    }
+    for (const entry of payload) {
+      const nested = findFirstRecordArray(entry, depth + 1);
+      if (nested.length) {
+        return nested;
+      }
+    }
+    return [];
+  }
+
+  if (isRecord(payload)) {
+    for (const value of Object.values(payload)) {
+      if (Array.isArray(value)) {
+        const records = value.filter(isRecord);
+        if (records.length) {
+          return records;
+        }
+      }
+    }
+    for (const value of Object.values(payload)) {
+      const nested = findFirstRecordArray(value, depth + 1);
+      if (nested.length) {
+        return nested;
+      }
+    }
+  }
+
+  return [];
+};
+
+const findNumberByKeys = (payload: unknown, keys: string[], depth = 0): number | undefined => {
+  if (depth > 5 || payload === null || payload === undefined) return undefined;
+  if (isRecord(payload)) {
+    for (const key of keys) {
+      if (key in payload) {
+        const candidate = pickNumber(payload[key]);
+        if (candidate !== undefined) {
+          return candidate;
+        }
+      }
+    }
+    for (const value of Object.values(payload)) {
+      const nested = findNumberByKeys(value, keys, depth + 1);
+      if (nested !== undefined) {
+        return nested;
+      }
+    }
+  } else if (Array.isArray(payload)) {
+    for (const value of payload) {
+      const nested = findNumberByKeys(value, keys, depth + 1);
+      if (nested !== undefined) {
+        return nested;
+      }
+    }
+  }
+  return undefined;
+};
+
+const parseEnrichmentMetrics = (payload: unknown): EnrichmentOverview["metrics"] => {
+  return {
+    totalFieldsTagged: findNumberByKeys(payload, [
+      "totalFieldsTagged",
+      "fieldsTagged",
+      "taggedFields",
+      "totalFields",
+      "fieldCount",
+    ]),
+    readabilityDelta: findNumberByKeys(payload, [
+      "readabilityImproved",
+      "readabilityDelta",
+      "readabilityScoreDelta",
+      "readability",
+    ]),
+    errorsFound: findNumberByKeys(payload, ["errorsFound", "errorCount", "errors"]),
+  };
+};
+
+const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
+  if (!payload) {
+    return { metrics: {}, elements: [] };
+  }
+
+  const baseRecord =
+    isRecord(payload) && payload.body && typeof payload.body === "object"
+      ? (payload.body as Record<string, unknown>)
+      : payload;
+
+  const metrics = parseEnrichmentMetrics(baseRecord);
+  const sectionRecords = findFirstRecordArray(baseRecord);
+
+  if (!sectionRecords.length) {
+    return { metrics, elements: [] };
+  }
+
+  const elements = sectionRecords.map((record, index) => {
+    const sources: Record<string, unknown>[] = [record];
+    const nestedKeys = ["data", "attributes", "meta", "context", "details", "fields"];
+    nestedKeys.forEach((key) => {
+      const candidate = record[key];
+      if (isRecord(candidate)) {
+        sources.push(candidate);
+      }
+    });
+
+    const id =
+      pickFromSources(sources, ["id", "sectionId", "elementId", "contentId", "hash"]) ??
+      `element-${index}`;
+    const title =
+      pickFromSources(sources, ["title", "label", "name", "field", "section", "heading"]) ??
+      `Element ${index + 1}`;
+    const path =
+      pickFromSources(sources, ["path", "breadcrumb", "hierarchy", "location"]) ??
+      pickFromSources(sources, ["parent", "group", "category"]);
+    const copy =
+      pickFromSources(sources, [
+        "copy",
+        "content",
+        "text",
+        "value",
+        "enrichedCopy",
+        "output",
+        "body",
+      ]) ?? undefined;
+    const summaryValue =
+      pickFromSources(sources, ["summary", "aiSummary", "insights", "analysis", "result"]) ??
+      copy ??
+      undefined;
+
+    const classification = pickListFromSources(sources, [
+      "classification",
+      "classifications",
+      "categories",
+      "category",
+      "taxonomy",
+    ]);
+    const keywords = pickListFromSources(sources, ["keywords", "keywordList", "searchKeywords"]);
+    const tags = pickListFromSources(sources, ["tags", "labels", "contentTags", "tagList"]);
+    const sentiment = extractSentimentFromSources(sources);
+
+    return {
+      id,
+      title,
+      path: path ?? undefined,
+      copy,
+      summary: summaryValue,
+      classification,
+      keywords,
+      tags,
+      sentiment,
+    };
+  });
+
+  return { metrics, elements };
 };
 
 const FALLBACK_HISTORY = [
@@ -198,7 +485,9 @@ export default function EnrichmentPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFeedback, setStatusFeedback] = useState<Feedback>({ state: "idle" });
   const [summaryFeedback, setSummaryFeedback] = useState<SummaryFeedback>({ state: "idle" });
-  const [summary, setSummary] = useState<string | null>(null);
+  const [enrichmentResult, setEnrichmentResult] = useState<EnrichmentOverview | null>(null);
+  const [rawSummary, setRawSummary] = useState<string | null>(null);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(
     queryId ?? localSnapshot?.metadata.cleansedId ?? null,
   );
@@ -289,7 +578,8 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       const { body, rawBody } = await parseJson(response);
       if (!response.ok) {
         if (response.status === 404) {
-          setSummary(null);
+          setEnrichmentResult(null);
+          setRawSummary("Awaiting enrichment results.");
           setSummaryFeedback({ state: "idle" });
           return;
         }
@@ -300,11 +590,19 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
         );
       }
       const proxyPayload = (body as Record<string, unknown>) ?? {};
+      const normalized = normalizeEnrichmentResult(proxyPayload);
+      setEnrichmentResult(normalized);
       const summarySource =
         proxyPayload.body ?? proxyPayload.rawBody ?? rawBody ?? "Awaiting enrichment results.";
-      setSummary(extractSummary(summarySource));
+      if (!normalized.elements.length) {
+        setRawSummary(extractSummary(summarySource));
+      } else {
+        setRawSummary(null);
+      }
       setSummaryFeedback({ state: "idle" });
     } catch (summaryError) {
+      setEnrichmentResult(null);
+      setRawSummary(null);
       setSummaryFeedback({
         state: "error",
         message: summaryError instanceof Error ? summaryError.message : "Unable to load enrichment results.",
@@ -323,6 +621,19 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context?.metadata.cleansedId]);
+
+  useEffect(() => {
+    if (enrichmentResult?.elements.length) {
+      setSelectedElementId((current) => {
+        if (current && enrichmentResult.elements.some((element) => element.id === current)) {
+          return current;
+        }
+        return enrichmentResult.elements[0]?.id ?? null;
+      });
+    } else {
+      setSelectedElementId(null);
+    }
+  }, [enrichmentResult?.elements]);
 
   const statusHistory = context?.statusHistory?.length
     ? context.statusHistory
@@ -349,6 +660,48 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     const derivedIndex = Math.min(statusHistory.length, statuses.length);
     return (derivedIndex / statuses.length) * 100;
   }, [currentStatus, statusHistory.length]);
+
+  const metrics = enrichmentResult?.metrics ?? {};
+  const totalFieldsTagged =
+    metrics.totalFieldsTagged !== null && metrics.totalFieldsTagged !== undefined
+      ? Math.round(metrics.totalFieldsTagged)
+      : null;
+  const readabilityDelta =
+    metrics.readabilityDelta !== null && metrics.readabilityDelta !== undefined
+      ? metrics.readabilityDelta
+      : null;
+  const errorsFoundMetric =
+    metrics.errorsFound !== null && metrics.errorsFound !== undefined ? metrics.errorsFound : null;
+  const readabilityDisplay =
+    readabilityDelta !== null ? `${readabilityDelta > 0 ? "+" : ""}${Math.round(readabilityDelta)}%` : null;
+  const errorsDisplay = errorsFoundMetric !== null ? Math.round(errorsFoundMetric) : null;
+
+  const selectedElement = useMemo(() => {
+    if (!enrichmentResult?.elements.length) return null;
+    if (selectedElementId) {
+      const match = enrichmentResult.elements.find((element) => element.id === selectedElementId);
+      if (match) return match;
+    }
+    return enrichmentResult.elements[0] ?? null;
+  }, [enrichmentResult?.elements, selectedElementId]);
+
+  const renderChipList = (items: string[], emptyLabel: string) => {
+    if (!items.length) {
+      return <p className="text-sm text-slate-500">{emptyLabel}</p>;
+    }
+    return (
+      <div className="flex flex-wrap gap-2">
+        {items.map((item) => (
+          <span
+            key={item}
+            className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700"
+          >
+            {item}
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   const handleRefreshStatus = async () => {
     if (!activeId) {
@@ -478,6 +831,24 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
               Refresh Status
             </button>
           </div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Total fields tagged</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">
+                {totalFieldsTagged ?? "—"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Readability improved</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">
+                {readabilityDisplay ?? "—"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Errors found</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{errorsDisplay ?? "—"}</p>
+            </div>
+          </div>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Cleansed ID</p>
@@ -548,31 +919,133 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
               Read-only snapshot of the most recent enrichment output.
             </span>
           </div>
-          <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700">
-            {summaryFeedback.state === "loading" ? (
-              <p>Loading enrichment summary…</p>
-            ) : summaryFeedback.state === "error" ? (
-              <div>
-                <p className="font-semibold text-amber-700">Unable to load enrichment summary.</p>
-                <p className="text-xs text-slate-600">{summaryFeedback.message}</p>
-                <button
-                  type="button"
-                  onClick={() => context.metadata.cleansedId && fetchSummary(context.metadata.cleansedId, true)}
-                  className="mt-3 rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
-                >
-                  Retry
-                </button>
+          {summaryFeedback.state === "loading" ? (
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+              Loading enrichment summary…
+            </div>
+          ) : summaryFeedback.state === "error" ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="font-semibold text-amber-800">Unable to load enrichment summary.</p>
+              <p className="text-xs text-amber-900/80">{summaryFeedback.message}</p>
+              <button
+                type="button"
+                onClick={() => context.metadata.cleansedId && fetchSummary(context.metadata.cleansedId, true)}
+                className="mt-3 rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
+              >
+                Retry
+              </button>
+            </div>
+          ) : enrichmentResult?.elements.length ? (
+            <div className="mt-6 grid gap-6 xl:grid-cols-[300px,1fr]">
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Enriched elements</p>
+                <div className="mt-3 max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                  {enrichmentResult.elements.map((element) => {
+                    const isActive = element.id === selectedElementId || (!selectedElementId && element.id === enrichmentResult.elements[0]?.id);
+                    return (
+                      <button
+                        key={element.id}
+                        type="button"
+                        onClick={() => setSelectedElementId(element.id)}
+                        className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                          isActive
+                            ? "border-indigo-200 bg-white shadow-sm"
+                            : "border-transparent bg-transparent hover:border-slate-200 hover:bg-white"
+                        }`}
+                      >
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          {element.path ?? "Enriched element"}
+                        </p>
+                        <p className="text-sm font-semibold text-slate-900">{element.title}</p>
+                        <p className="mt-1 truncate text-xs text-slate-500">
+                          {element.copy ?? element.summary ?? "No preview available."}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            ) : summary ? (
-              <pre className="whitespace-pre-wrap text-sm text-slate-800">{summary}</pre>
-            ) : (
-              <p>
-                Awaiting enrichment results. Once the backend finishes generating AI insights,
-                they’ll appear here automatically. Use the “Refresh status” button above to check
-                for updates.
-              </p>
-            )}
-          </div>
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-100 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">Enriched copy</p>
+                  <p className="mt-2 text-sm text-slate-800">
+                    {selectedElement?.copy ?? "No enriched copy provided yet."}
+                  </p>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-100 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          Content insights
+                        </p>
+                        <h3 className="text-base font-semibold text-slate-900">Summary</h3>
+                      </div>
+                      <span className="text-xs font-semibold text-slate-500">
+                        {selectedElement?.classification?.length ? "2 fields" : "1 field"}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm text-slate-700">
+                      {selectedElement?.summary ?? "Summary not available yet."}
+                    </p>
+                    <div className="mt-4">
+                      <p className="text-xs uppercase tracking-wide text-slate-400">Classification</p>
+                      {renderChipList(
+                        selectedElement?.classification ?? [],
+                        "No classification detected.",
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Search metadata</p>
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">Keywords</p>
+                        {renderChipList(
+                          selectedElement?.keywords ?? [],
+                          "Keywords pending enrichment.",
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">Content tags</p>
+                        {renderChipList(selectedElement?.tags ?? [], "Tags pending enrichment.")}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Tone & sentiment</p>
+                    <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                      {selectedElement?.sentiment ? (
+                        <>
+                          <p className="text-sm font-semibold text-emerald-700">
+                            {selectedElement.sentiment.label}
+                          </p>
+                          {selectedElement.sentiment.score !== undefined && (
+                            <p className="text-xs text-emerald-800">
+                              Score: {Math.round(selectedElement.sentiment.score * 100) / 100}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-emerald-800/80">
+                          Sentiment analytics will appear after enrichment completes.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : rawSummary ? (
+            <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700">
+              <pre className="whitespace-pre-wrap">{rawSummary}</pre>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-500">
+              Awaiting enrichment results. Once the backend finishes generating AI insights, they’ll
+              appear here automatically. Use the “Refresh status” button above to check for updates.
+            </div>
+          )}
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">

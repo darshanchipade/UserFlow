@@ -41,6 +41,11 @@ type EnrichedElement = {
   keywords: string[];
   tags: string[];
   sentiment?: SentimentSnapshot | null;
+  meta?: {
+    fieldsTagged?: number;
+    readabilityDelta?: number;
+    errorsFound?: number;
+  };
 };
 
 type EnrichmentOverview = {
@@ -98,6 +103,28 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null;
 };
 
+const parseJsonArrayStrings = (value: string): string[] => {
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((entry) => (typeof entry === "string" ? entry.trim() : undefined))
+        .filter((entry): entry is string => Boolean(entry));
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+};
+
+const splitDelimitedString = (value: string): string[] => {
+  const tokens = value
+    .split(/[,|;>]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  return tokens;
+};
+
 const normalizeStringList = (value: unknown): string[] => {
   if (Array.isArray(value)) {
     return value
@@ -117,10 +144,15 @@ const normalizeStringList = (value: unknown): string[] => {
       .filter((entry): entry is string => Boolean(entry));
   }
   if (typeof value === "string") {
-    return value
-      .split(/[,|]/)
-      .map((entry) => entry.trim())
-      .filter(Boolean);
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      const parsed = parseJsonArrayStrings(trimmed);
+      if (parsed.length) {
+        return parsed;
+      }
+    }
+    return splitDelimitedString(trimmed);
   }
   if (isRecord(value)) {
     if (Array.isArray(value.values)) return normalizeStringList(value.values);
@@ -163,10 +195,12 @@ const extractSentimentFromSources = (
     const directLabel =
       pickString(source.sentiment) ??
       pickString(source.sentimentLabel) ??
+      pickString(source.sentiment_label) ??
       pickString(source.tone) ??
       pickString(source.mood);
     const scoreCandidate =
       pickNumber(source.sentimentScore) ??
+      pickNumber(source.sentiment_score) ??
       pickNumber(source.score) ??
       pickNumber(source.sentimentConfidence);
 
@@ -266,15 +300,45 @@ const parseEnrichmentMetrics = (payload: unknown): EnrichmentOverview["metrics"]
       "taggedFields",
       "totalFields",
       "fieldCount",
+      "total_fields_tagged",
+      "total_tagged_fields",
+      "total_enriched_fields",
+      "total_enriched_elements",
     ]),
     readabilityDelta: findNumberByKeys(payload, [
       "readabilityImproved",
       "readabilityDelta",
       "readabilityScoreDelta",
       "readability",
+      "readabilityImprovement",
+      "readability_improved",
+      "readability_gain",
+      "readability_gain_percent",
+      "readabilityIncreasePercent",
     ]),
-    errorsFound: findNumberByKeys(payload, ["errorsFound", "errorCount", "errors"]),
+    errorsFound: findNumberByKeys(payload, [
+      "errorsFound",
+      "errorCount",
+      "errors",
+      "errors_detected",
+      "error_total",
+    ]),
   };
+};
+
+const pickNumberFromSources = (
+  sources: Record<string, unknown>[],
+  keys: string[],
+): number | undefined => {
+  for (const key of keys) {
+    for (const source of sources) {
+      const candidate = pickNumber(source[key]);
+      if (candidate !== undefined) {
+        return candidate;
+      }
+    }
+  }
+  return undefined;
 };
 
 const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
@@ -288,7 +352,28 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
       : payload;
 
   const metrics = parseEnrichmentMetrics(baseRecord);
-  const sectionRecords = findFirstRecordArray(baseRecord);
+  let sectionRecords: Record<string, unknown>[] = [];
+  if (isRecord(baseRecord)) {
+    const preferredKeys = [
+      "enriched_content_elements",
+      "enrichedContentElements",
+      "enrichment_sections",
+      "enrichmentSections",
+      "elements",
+      "records",
+      "rows",
+      "data",
+    ];
+    for (const key of preferredKeys) {
+      if (Array.isArray(baseRecord[key])) {
+        sectionRecords = (baseRecord[key] as unknown[]).filter(isRecord);
+        if (sectionRecords.length) break;
+      }
+    }
+  }
+  if (!sectionRecords.length) {
+    sectionRecords = findFirstRecordArray(baseRecord);
+  }
 
   if (!sectionRecords.length) {
     return { metrics, elements: [] };
@@ -305,14 +390,41 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
     });
 
     const id =
-      pickFromSources(sources, ["id", "sectionId", "elementId", "contentId", "hash"]) ??
+      pickFromSources(sources, [
+        "id",
+        "sectionId",
+        "elementId",
+        "element_id",
+        "contentId",
+        "content_id",
+        "hash",
+        "recordId",
+      ]) ??
       `element-${index}`;
     const title =
-      pickFromSources(sources, ["title", "label", "name", "field", "section", "heading"]) ??
+      pickFromSources(sources, [
+        "title",
+        "label",
+        "name",
+        "field",
+        "section",
+        "heading",
+        "elementTitle",
+        "element_title",
+        "content_name",
+      ]) ??
       `Element ${index + 1}`;
     const path =
-      pickFromSources(sources, ["path", "breadcrumb", "hierarchy", "location"]) ??
-      pickFromSources(sources, ["parent", "group", "category"]);
+      pickFromSources(sources, [
+        "path",
+        "breadcrumb",
+        "hierarchy",
+        "location",
+        "elementPath",
+        "element_path",
+        "sectionPath",
+        "section_path",
+      ]) ?? pickFromSources(sources, ["parent", "group", "category"]);
     const copy =
       pickFromSources(sources, [
         "copy",
@@ -320,11 +432,18 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
         "text",
         "value",
         "enrichedCopy",
+        "enriched_copy",
         "output",
         "body",
+        "copy_text",
+        "copyText",
+        "copyValue",
+        "aiCopy",
+        "ai_copy",
       ]) ?? undefined;
     const summaryValue =
       pickFromSources(sources, ["summary", "aiSummary", "insights", "analysis", "result"]) ??
+      pickFromSources(sources, ["summary_text", "ai_summary", "summaryText"]) ??
       copy ??
       undefined;
 
@@ -334,10 +453,33 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
       "categories",
       "category",
       "taxonomy",
+      "classification_path",
+      "classificationPath",
+      "category_path",
     ]);
     const keywords = pickListFromSources(sources, ["keywords", "keywordList", "searchKeywords"]);
-    const tags = pickListFromSources(sources, ["tags", "labels", "contentTags", "tagList"]);
+    const tags = pickListFromSources(sources, [
+      "tags",
+      "labels",
+      "contentTags",
+      "tagList",
+      "content_tags",
+    ]);
     const sentiment = extractSentimentFromSources(sources);
+    const elementFieldsTagged = pickNumberFromSources(sources, [
+      "fieldsTagged",
+      "fieldCount",
+      "totalFieldsTagged",
+      "total_fields_tagged",
+    ]);
+    const elementReadability = pickNumberFromSources(sources, [
+      "readabilityImproved",
+      "readabilityDelta",
+      "readabilityScoreDelta",
+      "readability_improved",
+      "readability_gain",
+    ]);
+    const elementErrors = pickNumberFromSources(sources, ["errorsFound", "errorCount", "errors"]);
 
     return {
       id,
@@ -349,10 +491,35 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
       keywords,
       tags,
       sentiment,
+      meta: {
+        fieldsTagged: elementFieldsTagged,
+        readabilityDelta: elementReadability,
+        errorsFound: elementErrors,
+      },
     };
   });
 
-  return { metrics, elements };
+  const aggregatedMetrics = { ...metrics };
+  if (aggregatedMetrics.totalFieldsTagged == null) {
+    const sum =
+      elements.reduce((acc, element) => acc + (element.meta?.fieldsTagged ?? 0), 0) ||
+      (elements.length ? elements.length : 0);
+    aggregatedMetrics.totalFieldsTagged = sum || null;
+  }
+  if (aggregatedMetrics.readabilityDelta == null) {
+    const firstDelta = elements.find((element) => element.meta?.readabilityDelta !== undefined)
+      ?.meta?.readabilityDelta;
+    aggregatedMetrics.readabilityDelta = firstDelta ?? null;
+  }
+  if (aggregatedMetrics.errorsFound == null) {
+    const sumErrors = elements.reduce(
+      (acc, element) => acc + (element.meta?.errorsFound ?? 0),
+      0,
+    );
+    aggregatedMetrics.errorsFound = sumErrors || null;
+  }
+
+  return { metrics: aggregatedMetrics, elements };
 };
 
 const FALLBACK_HISTORY: EnrichmentContext["statusHistory"] = [
@@ -598,6 +765,30 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
         setRawSummary(extractSummary(summarySource));
       } else {
         setRawSummary(null);
+        setContext((previous) => {
+          if (!previous) return previous;
+          const now = Date.now();
+          const history = Array.isArray(previous.statusHistory) ? [...previous.statusHistory] : [];
+          const hasRunning = history.some((entry) => entry.status === "ENRICHMENT_RUNNING");
+          const hasComplete = history.some((entry) => entry.status === "ENRICHMENT_COMPLETE");
+          if (!hasRunning) {
+            history.push({
+              status: "ENRICHMENT_RUNNING",
+              timestamp: history[history.length - 1]?.timestamp ?? now - 60_000,
+            });
+          }
+          if (!hasComplete) {
+            history.push({
+              status: "ENRICHMENT_COMPLETE",
+              timestamp: now,
+            });
+          }
+          history.sort((a, b) => a.timestamp - b.timestamp);
+          return {
+            ...previous,
+            statusHistory: history,
+          };
+        });
       }
       setSummaryFeedback({ state: "idle" });
     } catch (summaryError) {
@@ -672,9 +863,18 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       : null;
   const errorsFoundMetric =
     metrics.errorsFound !== null && metrics.errorsFound !== undefined ? metrics.errorsFound : null;
+  const normalizedReadability =
+    readabilityDelta !== null && Number.isFinite(readabilityDelta)
+      ? Math.abs(readabilityDelta) <= 1
+        ? readabilityDelta * 100
+        : readabilityDelta
+      : null;
   const readabilityDisplay =
-    readabilityDelta !== null ? `${readabilityDelta > 0 ? "+" : ""}${Math.round(readabilityDelta)}%` : null;
-  const errorsDisplay = errorsFoundMetric !== null ? Math.round(errorsFoundMetric) : null;
+    normalizedReadability !== null
+      ? `${normalizedReadability > 0 ? "+" : ""}${Math.round(normalizedReadability)}%`
+      : null;
+  const errorsDisplay =
+    errorsFoundMetric !== null ? Math.max(0, Math.round(errorsFoundMetric)) : null;
 
   const selectedElement = useMemo(() => {
     if (!enrichmentResult?.elements.length) return null;

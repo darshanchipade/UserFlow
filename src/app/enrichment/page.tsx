@@ -20,6 +20,14 @@ type SummaryFeedback = {
   message?: string;
 };
 
+type EnrichmentDetailRow = {
+  id: string;
+  cleansedItem: string;
+  summary?: string;
+  tags: string[];
+  sentiments: string[];
+};
+
 type RemoteEnrichmentContext = {
   metadata: EnrichmentContext["metadata"];
   startedAt: number;
@@ -32,6 +40,7 @@ const STATUS_LABELS: Record<string, string> = {
   ENRICHMENT_RUNNING: "Enrichment running",
   PARTIALLY_ENRICHED: "Partially enriched",
   ENRICHMENT_COMPLETE: "Enrichment complete",
+  ENRICHED_COMPLETE: "Enrichment complete",
   ERROR: "Failed",
 };
 
@@ -68,10 +77,18 @@ const STATUS_COLORS: Record<string, { className: string; dot: string; background
   },
 };
 
-const FALLBACK_HISTORY = [
-  { status: "ENRICHMENT_TRIGGERED", timestamp: Date.now() },
-  { status: "WAITING_FOR_RESULTS", timestamp: Date.now() },
-] satisfies EnrichmentContext["statusHistory"];
+const STATUS_SEQUENCE = [
+  "ENRICHMENT_TRIGGERED",
+  "WAITING_FOR_RESULTS",
+  "ENRICHMENT_RUNNING",
+  "PARTIALLY_ENRICHED",
+  "ENRICHMENT_COMPLETE",
+];
+
+const FALLBACK_HISTORY: EnrichmentContext["statusHistory"] = [
+  { status: "ENRICHMENT_TRIGGERED", timestamp: 0 },
+  { status: "WAITING_FOR_RESULTS", timestamp: 0 },
+];
 
 const parseJson = async (response: Response) => {
   const rawBody = await response.text();
@@ -97,6 +114,151 @@ const pickNumber = (value: unknown) => {
     return value;
   }
   return undefined;
+};
+
+const formatTimestamp = (value?: number | null) => {
+  if (!value) {
+    return "—";
+  }
+  return new Date(value).toLocaleString();
+};
+
+const toStringArray = (value: unknown): string[] => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === "string" ? entry.trim() : undefined))
+      .filter((entry): entry is string => Boolean(entry && entry.length));
+  }
+  if (typeof value === "string" && value.trim().length) {
+    return value
+      .split(",")
+      .map((token) => token.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const normalizeProxyDetails = (payload: unknown): EnrichmentDetailRow[] => {
+  if (!Array.isArray(payload)) return [];
+  return payload
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      const record = entry as Record<string, unknown>;
+      const cleansedItem =
+        pickString(record.cleansedItem) ??
+        pickString(record.cleansedContent) ??
+        pickString(record.item) ??
+        pickString(record.field) ??
+        pickString(record.label) ??
+        `Item ${index + 1}`;
+      const summary =
+        pickString(record.summary) ??
+        pickString(record.aiSummary) ??
+        pickString(record.description) ??
+        pickString(record.content);
+      const tags = toStringArray(record.tags);
+      const sentiments = toStringArray(record.sentiments);
+      return {
+        id:
+          pickString(record.id) ??
+          pickString(record.cleansedId) ??
+          `enrichment-${index}`,
+        cleansedItem,
+        summary: summary ?? undefined,
+        tags,
+        sentiments,
+      };
+    })
+    .filter((row): row is EnrichmentDetailRow => Boolean(row));
+};
+
+const buildSummaryFromDetails = (details: EnrichmentDetailRow[]): string | undefined => {
+  if (!details.length) {
+    return undefined;
+  }
+  return details
+    .map((detail) => {
+      const summaryLine = detail.summary ?? "Awaiting summary.";
+      const tagsLine = detail.tags.length ? `Tags: ${detail.tags.join(", ")}` : null;
+      const sentimentsLine = detail.sentiments.length
+        ? `Sentiments: ${detail.sentiments.join(", ")}`
+        : null;
+      return [`${detail.cleansedItem}: ${summaryLine}`, tagsLine, sentimentsLine]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n\n");
+};
+
+const normalizePipelineStatus = (value?: string | null) => {
+  if (!value || typeof value !== "string") return undefined;
+  const normalized = value.trim().replace(/[\s-]+/g, "_").toUpperCase();
+  if (normalized === "ENRICHED_COMPLETE") {
+    return "ENRICHMENT_COMPLETE";
+  }
+  return normalized;
+};
+
+const buildHistoryForStatus = (status: string, baseTimestamp: number) => {
+  const normalized = normalizePipelineStatus(status);
+  if (!normalized) return null;
+  const index = STATUS_SEQUENCE.indexOf(normalized);
+  const steps = index >= 0 ? STATUS_SEQUENCE.slice(0, index + 1) : [normalized];
+  return steps.map((step, idx) => ({
+    status: step,
+    timestamp: baseTimestamp + idx,
+  }));
+};
+
+const extractHistoryFromRecord = (
+  payload: unknown,
+  defaultTimestamp: number,
+): RemoteEnrichmentContext["statusHistory"] | null => {
+  if (!payload || typeof payload !== "object") {
+    if (typeof payload === "string") {
+      return buildHistoryForStatus(payload, defaultTimestamp);
+    }
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  const directHistory = record.statusHistory;
+  if (Array.isArray(directHistory)) {
+    return directHistory.filter((entry): entry is { status: string; timestamp: number } => {
+      return (
+        !!entry &&
+        typeof entry === "object" &&
+        typeof entry.status === "string" &&
+        typeof entry.timestamp === "number"
+      );
+    });
+  }
+  const nested = record.body;
+  if (nested && typeof nested === "object") {
+    const nestedHistory = (nested as Record<string, unknown>).statusHistory;
+    if (Array.isArray(nestedHistory)) {
+      return nestedHistory.filter((entry): entry is { status: string; timestamp: number } => {
+        return (
+          !!entry &&
+          typeof entry === "object" &&
+          typeof entry.status === "string" &&
+          typeof entry.timestamp === "number"
+        );
+      });
+    }
+  }
+  const fallbackStatus =
+    normalizePipelineStatus(pickString(record.status)) ??
+    normalizePipelineStatus(pickString(record.pipelineStatus)) ??
+    normalizePipelineStatus(pickString(record.state)) ??
+    normalizePipelineStatus(pickString(record.currentStatus)) ??
+    normalizePipelineStatus(typeof payload === "string" ? payload : undefined);
+
+  if (fallbackStatus) {
+    return buildHistoryForStatus(fallbackStatus, defaultTimestamp);
+  }
+
+  return null;
 };
 
 const buildDefaultMetadata = (
@@ -199,6 +361,7 @@ export default function EnrichmentPage() {
   const [statusFeedback, setStatusFeedback] = useState<Feedback>({ state: "idle" });
   const [summaryFeedback, setSummaryFeedback] = useState<SummaryFeedback>({ state: "idle" });
   const [summary, setSummary] = useState<string | null>(null);
+  const [enrichmentDetails, setEnrichmentDetails] = useState<EnrichmentDetailRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(
     queryId ?? localSnapshot?.metadata.cleansedId ?? null,
   );
@@ -211,6 +374,24 @@ export default function EnrichmentPage() {
 const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> => {
   const response = await fetch(`/api/ingestion/enrichment/status?id=${encodeURIComponent(id)}`);
   const { body, rawBody } = await parseJson(response);
+
+  const proxyPayload = (body as Record<string, unknown>) ?? {};
+  const upstreamOk =
+    typeof proxyPayload.upstreamOk === "boolean" ? proxyPayload.upstreamOk : response.ok;
+
+  if (!upstreamOk) {
+    const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
+    const fallbackHistory =
+      localSnapshot?.statusHistory && localSnapshot.statusHistory.length
+        ? localSnapshot.statusHistory
+        : FALLBACK_HISTORY;
+    return {
+      metadata: fallbackMetadata,
+      startedAt: localSnapshot?.startedAt ?? Date.now(),
+      statusHistory: fallbackHistory,
+    };
+  }
+
   if (!response.ok) {
     throw new Error(
       (body as Record<string, unknown>)?.error as string ??
@@ -218,30 +399,60 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
         "Backend rejected the enrichment status request.",
     );
   }
-    const proxyPayload = (body as Record<string, unknown>) ?? {};
-    let backendRecord: Record<string, unknown> | null = null;
-    if (proxyPayload.body && typeof proxyPayload.body === "object") {
-      backendRecord = proxyPayload.body as Record<string, unknown>;
-    } else if (!("body" in proxyPayload) && typeof proxyPayload === "object") {
-      backendRecord = proxyPayload;
-    }
-    const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
-    const mergedMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
-    const backendHistory = Array.isArray(
-      backendRecord?.["statusHistory"] as { status: string; timestamp: number }[] | undefined,
-    )
-      ? (backendRecord?.["statusHistory"] as { status: string; timestamp: number }[])
-      : null;
 
-    return {
-      metadata: mergedMetadata,
-      startedAt:
-        pickNumber(backendRecord?.startedAt) ??
-        pickNumber(proxyPayload.startedAt) ??
-        Date.now(),
-      statusHistory: backendHistory && backendHistory.length ? backendHistory : FALLBACK_HISTORY,
-    };
+  const backendPayload =
+    "body" in proxyPayload ? proxyPayload.body : (proxyPayload as unknown);
+  const backendRecord =
+    backendPayload && typeof backendPayload === "object"
+      ? (backendPayload as Record<string, unknown>)
+      : null;
+  const fallbackMetadata = buildDefaultMetadata(id, localSnapshot?.metadata ?? undefined);
+  const mergedMetadata = buildMetadataFromBackend(backendRecord, fallbackMetadata, id);
+  const now = Date.now();
+  let history: RemoteEnrichmentContext["statusHistory"] | null = null;
+  if (Array.isArray(backendRecord?.["statusHistory"])) {
+    history = backendRecord?.["statusHistory"] as { status: string; timestamp: number }[];
+  } else {
+    history =
+      extractHistoryFromRecord(backendPayload, now) ??
+      extractHistoryFromRecord(proxyPayload, now);
+  }
+
+  const inferredHistory =
+    history && history.length
+      ? history
+      : (() => {
+          const fallbackStatus =
+            normalizePipelineStatus(
+              pickString(
+                backendRecord?.status ??
+                  backendRecord?.pipelineStatus ??
+                  backendRecord?.state ??
+                  backendRecord?.currentStatus,
+              ),
+            ) ??
+            normalizePipelineStatus(pickString(proxyPayload.status)) ??
+            normalizePipelineStatus(pickString(proxyPayload.pipelineStatus)) ??
+            normalizePipelineStatus(pickString(proxyPayload.state)) ??
+            normalizePipelineStatus(pickString(proxyPayload.currentStatus)) ??
+            normalizePipelineStatus(
+              typeof backendPayload === "string" ? backendPayload : undefined,
+            );
+          if (!fallbackStatus) {
+            return null;
+          }
+          return buildHistoryForStatus(fallbackStatus, now);
+        })();
+
+  return {
+    metadata: mergedMetadata,
+    startedAt:
+      pickNumber(backendRecord?.startedAt) ??
+      pickNumber(proxyPayload.startedAt) ??
+      Date.now(),
+    statusHistory: inferredHistory && inferredHistory.length ? inferredHistory : FALLBACK_HISTORY,
   };
+};
 
   const loadContext = async (
     id: string | null,
@@ -290,6 +501,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       if (!response.ok) {
         if (response.status === 404) {
           setSummary(null);
+          setEnrichmentDetails([]);
           setSummaryFeedback({ state: "idle" });
           return;
         }
@@ -300,9 +512,20 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
         );
       }
       const proxyPayload = (body as Record<string, unknown>) ?? {};
+      const normalizedDetails = normalizeProxyDetails(proxyPayload.details);
+      setEnrichmentDetails(normalizedDetails);
+      const combinedDetailSummary = buildSummaryFromDetails(normalizedDetails);
       const summarySource =
-        proxyPayload.body ?? proxyPayload.rawBody ?? rawBody ?? "Awaiting enrichment results.";
-      setSummary(extractSummary(summarySource));
+        (typeof proxyPayload.summary === "string" && proxyPayload.summary.trim().length
+          ? proxyPayload.summary
+          : combinedDetailSummary ??
+            proxyPayload.body ??
+            proxyPayload.rawBody ??
+            rawBody ??
+            "Awaiting enrichment results.");
+      const derivedSummary =
+        typeof summarySource === "string" ? summarySource : extractSummary(summarySource);
+      setSummary(derivedSummary ?? combinedDetailSummary ?? null);
       setSummaryFeedback({ state: "idle" });
     } catch (summaryError) {
       setSummaryFeedback({
@@ -498,15 +721,15 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Started at</p>
               <p className="text-sm font-semibold text-slate-900">
-                {new Date(context.startedAt).toLocaleString()}
+                {formatTimestamp(context.startedAt)}
               </p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Last update</p>
               <p className="text-sm font-semibold text-slate-900">
-                {new Date(
+                {formatTimestamp(
                   statusHistory[statusHistory.length - 1]?.timestamp ?? context.startedAt,
-                ).toLocaleString()}
+                )}
               </p>
             </div>
           </div>
@@ -529,9 +752,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
                   <p className={`text-sm font-semibold ${meta.className}`}>
                     {STATUS_LABELS[entry.status] ?? entry.status}
                   </p>
-                  <p className="text-xs text-slate-500">
-                    {new Date(entry.timestamp).toLocaleString()}
-                  </p>
+                  <p className="text-xs text-slate-500">{formatTimestamp(entry.timestamp)}</p>
                 </div>
               );
             })}
@@ -573,6 +794,78 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
               </p>
             )}
           </div>
+          {enrichmentDetails.length > 0 && (
+            <div className="mt-4 max-h-[420px] space-y-4 overflow-y-auto pr-1">
+              {enrichmentDetails.map((detail) => (
+                <div
+                  key={detail.id}
+                  className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{detail.cleansedItem}</p>
+                      <p className="text-xs text-slate-500">AI-derived insight</p>
+                    </div>
+                    {detail.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {detail.tags.map((tag) => (
+                          <span
+                            key={`${detail.id}-header-tag-${tag}`}
+                            className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-800">
+                    {detail.summary ?? "Summary pending from enrichment pipeline."}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Tags
+                      </p>
+                      {detail.tags.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {detail.tags.map((tag) => (
+                            <span
+                              key={`${detail.id}-tag-${tag}`}
+                              className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400">—</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Sentiments
+                      </p>
+                      {detail.sentiments.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {detail.sentiments.map((sentiment) => (
+                            <span
+                              key={`${detail.id}-sentiment-${sentiment}`}
+                              className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700"
+                            >
+                              {sentiment}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400">—</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">

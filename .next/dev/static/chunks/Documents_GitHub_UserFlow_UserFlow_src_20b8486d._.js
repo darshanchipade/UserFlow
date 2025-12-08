@@ -947,7 +947,12 @@ function ExtractionPage() {
         try {
             let response;
             const snapshotRawJson = snapshot?.rawJson ?? context.rawJson;
-            if (context.mode === "s3" && context.sourceUri) {
+            const cleansedId = context.metadata.cleansedId;
+            if (cleansedId) {
+                response = await fetch(`/api/ingestion/resume/${encodeURIComponent(cleansedId)}`, {
+                    method: "POST"
+                });
+            } else if (context.mode === "s3" && context.sourceUri) {
                 response = await fetch("/api/ingestion/s3", {
                     method: "POST",
                     headers: {
@@ -1009,7 +1014,7 @@ function ExtractionPage() {
                         children: "Extraction"
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                        lineNumber: 516,
+                        lineNumber: 522,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -1017,7 +1022,7 @@ function ExtractionPage() {
                         children: "Preparing workspace…"
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                        lineNumber: 517,
+                        lineNumber: 523,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1025,18 +1030,18 @@ function ExtractionPage() {
                         children: "Loading your latest extraction context."
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                        lineNumber: 518,
+                        lineNumber: 524,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                lineNumber: 515,
+                lineNumber: 521,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-            lineNumber: 514,
+            lineNumber: 520,
             columnNumber: 7
         }, this);
     }
@@ -1051,7 +1056,7 @@ function ExtractionPage() {
                         children: "Extraction context not found."
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                        lineNumber: 528,
+                        lineNumber: 534,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1059,7 +1064,7 @@ function ExtractionPage() {
                         children: "Start from the ingestion page to select a file or payload."
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                        lineNumber: 531,
+                        lineNumber: 537,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1069,18 +1074,18 @@ function ExtractionPage() {
                         children: "Back to Ingestion"
                     }, void 0, false, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                        lineNumber: 534,
+                        lineNumber: 540,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                lineNumber: 527,
+                lineNumber: 533,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-            lineNumber: 526,
+            lineNumber: 532,
             columnNumber: 7
         }, this);
     }
@@ -1101,7 +1106,7 @@ function ExtractionPage() {
                                     children: "Extraction"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                    lineNumber: 558,
+                                    lineNumber: 564,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -1109,13 +1114,13 @@ function ExtractionPage() {
                                     children: "Review structured content"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                    lineNumber: 561,
+                                    lineNumber: 567,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                            lineNumber: 557,
+                            lineNumber: 563,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1125,31 +1130,31 @@ function ExtractionPage() {
                                     current: "extraction"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                    lineNumber: 566,
+                                    lineNumber: 572,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(FeedbackPill, {
                                     feedback: feedback
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                    lineNumber: 567,
+                                    lineNumber: 573,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                            lineNumber: 565,
+                            lineNumber: 571,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                    lineNumber: 556,
+                    lineNumber: 562,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                lineNumber: 555,
+                lineNumber: 561,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
@@ -1171,7 +1176,7 @@ function ExtractionPage() {
                                                         children: "File structure"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 577,
+                                                        lineNumber: 583,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -1179,13 +1184,13 @@ function ExtractionPage() {
                                                         children: context.metadata.name
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 580,
+                                                        lineNumber: 586,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 576,
+                                                lineNumber: 582,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1199,7 +1204,7 @@ function ExtractionPage() {
                                                             className: "size-4 animate-spin"
                                                         }, void 0, false, {
                                                             fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                            lineNumber: 595,
+                                                            lineNumber: 601,
                                                             columnNumber: 21
                                                         }, this),
                                                         " Sending…"
@@ -1207,13 +1212,13 @@ function ExtractionPage() {
                                                 }, void 0, true) : "Send to Cleansing"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 584,
+                                                lineNumber: 590,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 575,
+                                        lineNumber: 581,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1223,7 +1228,7 @@ function ExtractionPage() {
                                                 className: "size-4 text-slate-500"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 603,
+                                                lineNumber: 609,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1231,13 +1236,13 @@ function ExtractionPage() {
                                                 children: sourceLabel
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 604,
+                                                lineNumber: 610,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 602,
+                                        lineNumber: 608,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1250,7 +1255,7 @@ function ExtractionPage() {
                                                         className: "pointer-events-none absolute left-3 top-2.5 size-4 text-slate-400"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 608,
+                                                        lineNumber: 614,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -1261,13 +1266,13 @@ function ExtractionPage() {
                                                         className: "w-full rounded-2xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 609,
+                                                        lineNumber: 615,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 607,
+                                                lineNumber: 613,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1278,7 +1283,7 @@ function ExtractionPage() {
                                                         children: "Loading extracted data snapshot…"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 619,
+                                                        lineNumber: 625,
                                                         columnNumber: 19
                                                     }, this),
                                                     !snapshotLoading && snapshotError && context?.snapshotId && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1289,7 +1294,7 @@ function ExtractionPage() {
                                                                 children: "Unable to load the cached structure."
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                                lineNumber: 625,
+                                                                lineNumber: 631,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1297,7 +1302,7 @@ function ExtractionPage() {
                                                                 children: snapshotError
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                                lineNumber: 626,
+                                                                lineNumber: 632,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1307,13 +1312,13 @@ function ExtractionPage() {
                                                                 children: "Retry download"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                                lineNumber: 627,
+                                                                lineNumber: 633,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 624,
+                                                        lineNumber: 630,
                                                         columnNumber: 19
                                                     }, this),
                                                     filteredTree.length === 0 ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1321,32 +1326,32 @@ function ExtractionPage() {
                                                         children: "Structure preview isn’t available yet. Re-run ingestion if this persists."
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 637,
+                                                        lineNumber: 643,
                                                         columnNumber: 19
                                                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                         className: "space-y-3",
                                                         children: renderTree(filteredTree)
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 641,
+                                                        lineNumber: 647,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 617,
+                                                lineNumber: 623,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 606,
+                                        lineNumber: 612,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                lineNumber: 574,
+                                lineNumber: 580,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -1357,7 +1362,7 @@ function ExtractionPage() {
                                         children: "Data overview"
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 648,
+                                        lineNumber: 654,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -1365,7 +1370,7 @@ function ExtractionPage() {
                                         children: "Field details"
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 651,
+                                        lineNumber: 657,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1378,7 +1383,7 @@ function ExtractionPage() {
                                                         children: "Field"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 656,
+                                                        lineNumber: 662,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1386,7 +1391,7 @@ function ExtractionPage() {
                                                         children: activeNode?.label ?? "Select a node"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 659,
+                                                        lineNumber: 665,
                                                         columnNumber: 17
                                                     }, this),
                                                     activeNode && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1394,13 +1399,13 @@ function ExtractionPage() {
                                                         children: activeNode.path
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 663,
+                                                        lineNumber: 669,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 655,
+                                                lineNumber: 661,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1410,7 +1415,7 @@ function ExtractionPage() {
                                                         children: "Original value"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 667,
+                                                        lineNumber: 673,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("pre", {
@@ -1418,31 +1423,31 @@ function ExtractionPage() {
                                                         children: activeValue === undefined ? "—" : typeof activeValue === "object" ? JSON.stringify(activeValue, null, 2) : String(activeValue)
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                        lineNumber: 670,
+                                                        lineNumber: 676,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 666,
+                                                lineNumber: 672,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 654,
+                                        lineNumber: 660,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                lineNumber: 647,
+                                lineNumber: 653,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                        lineNumber: 573,
+                        lineNumber: 579,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -1456,7 +1461,7 @@ function ExtractionPage() {
                                         children: "File metadata"
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 684,
+                                        lineNumber: 690,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1469,13 +1474,13 @@ function ExtractionPage() {
                                         children: "Start over"
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 685,
+                                        lineNumber: 691,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                lineNumber: 683,
+                                lineNumber: 689,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dl", {
@@ -1488,7 +1493,7 @@ function ExtractionPage() {
                                                 children: "Name"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 698,
+                                                lineNumber: 704,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
@@ -1496,13 +1501,13 @@ function ExtractionPage() {
                                                 children: context.metadata.name
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 699,
+                                                lineNumber: 705,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 697,
+                                        lineNumber: 703,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1512,36 +1517,12 @@ function ExtractionPage() {
                                                 children: "Size"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 702,
-                                                columnNumber: 15
-                                            }, this),
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
-                                                className: "text-sm font-semibold text-slate-900",
-                                                children: formatBytes(context.metadata.size)
-                                            }, void 0, false, {
-                                                fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 703,
-                                                columnNumber: 15
-                                            }, this)
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 701,
-                                        columnNumber: 13
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dt", {
-                                                className: "text-xs uppercase tracking-wide text-slate-400",
-                                                children: "Source type"
-                                            }, void 0, false, {
-                                                fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
                                                 lineNumber: 708,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
                                                 className: "text-sm font-semibold text-slate-900",
-                                                children: sourceLabel
+                                                children: formatBytes(context.metadata.size)
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
                                                 lineNumber: 709,
@@ -1557,10 +1538,34 @@ function ExtractionPage() {
                                         children: [
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dt", {
                                                 className: "text-xs uppercase tracking-wide text-slate-400",
+                                                children: "Source type"
+                                            }, void 0, false, {
+                                                fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
+                                                lineNumber: 714,
+                                                columnNumber: 15
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
+                                                className: "text-sm font-semibold text-slate-900",
+                                                children: sourceLabel
+                                            }, void 0, false, {
+                                                fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
+                                                lineNumber: 715,
+                                                columnNumber: 15
+                                            }, this)
+                                        ]
+                                    }, void 0, true, {
+                                        fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
+                                        lineNumber: 713,
+                                        columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                        children: [
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dt", {
+                                                className: "text-xs uppercase tracking-wide text-slate-400",
                                                 children: "Source identifier"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 712,
+                                                lineNumber: 718,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
@@ -1568,13 +1573,13 @@ function ExtractionPage() {
                                                 children: sourceIdentifier
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 713,
+                                                lineNumber: 719,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 711,
+                                        lineNumber: 717,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1584,36 +1589,12 @@ function ExtractionPage() {
                                                 children: "Cleansed ID"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 716,
-                                                columnNumber: 15
-                                            }, this),
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
-                                                className: "text-sm font-semibold text-slate-900",
-                                                children: context.metadata.cleansedId ?? "—"
-                                            }, void 0, false, {
-                                                fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                                lineNumber: 717,
-                                                columnNumber: 15
-                                            }, this)
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                        lineNumber: 715,
-                                        columnNumber: 13
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dt", {
-                                                className: "text-xs uppercase tracking-wide text-slate-400",
-                                                children: "Uploaded"
-                                            }, void 0, false, {
-                                                fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
                                                 lineNumber: 722,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
                                                 className: "text-sm font-semibold text-slate-900",
-                                                children: new Date(context.metadata.uploadedAt).toLocaleString()
+                                                children: context.metadata.cleansedId ?? "—"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
                                                 lineNumber: 723,
@@ -1624,29 +1605,53 @@ function ExtractionPage() {
                                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
                                         lineNumber: 721,
                                         columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                        children: [
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dt", {
+                                                className: "text-xs uppercase tracking-wide text-slate-400",
+                                                children: "Uploaded"
+                                            }, void 0, false, {
+                                                fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
+                                                lineNumber: 728,
+                                                columnNumber: 15
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$GitHub$2f$UserFlow$2f$UserFlow$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("dd", {
+                                                className: "text-sm font-semibold text-slate-900",
+                                                children: new Date(context.metadata.uploadedAt).toLocaleString()
+                                            }, void 0, false, {
+                                                fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
+                                                lineNumber: 729,
+                                                columnNumber: 15
+                                            }, this)
+                                        ]
+                                    }, void 0, true, {
+                                        fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
+                                        lineNumber: 727,
+                                        columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                                lineNumber: 696,
+                                lineNumber: 702,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                        lineNumber: 682,
+                        lineNumber: 688,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-                lineNumber: 572,
+                lineNumber: 578,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/Documents/GitHub/UserFlow/UserFlow/src/app/extraction/page.tsx",
-        lineNumber: 554,
+        lineNumber: 560,
         columnNumber: 5
     }, this);
 }

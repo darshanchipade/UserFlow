@@ -1,0 +1,3 @@
+{
+  "/api/ingestion/enrichment/result/route": "app/api/ingestion/enrichment/result/route.js"
+}

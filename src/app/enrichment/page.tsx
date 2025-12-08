@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -530,6 +531,33 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
   return { metrics: aggregatedMetrics, elements };
 };
 
+const humanizePath = (path: string) => {
+  const withoutRef = path.includes("::") ? path.split("::").pop()?.trim() ?? path : path;
+  const segments = withoutRef.split("/").filter(Boolean);
+  const lastSegment = segments[segments.length - 1] ?? withoutRef;
+  return lastSegment.replace(/[-_]/g, " ").trim() || "Enriched section";
+};
+
+const buildGroupKey = (element: EnrichedElement, index: number) => {
+  if (element.path?.trim()) {
+    return element.path.trim();
+  }
+  if (element.title?.trim()) {
+    return `title:${element.title.trim().toLowerCase()}`;
+  }
+  return `group-${index}`;
+};
+
+const buildGroupLabel = (key: string, fallback: EnrichedElement, index: number) => {
+  if (key.startsWith("title:")) {
+    return key.replace(/^title:/, "");
+  }
+  if (fallback.path?.trim()) {
+    return humanizePath(fallback.path);
+  }
+  return fallback.title?.trim() ?? `Element group ${index + 1}`;
+};
+
 const FALLBACK_HISTORY: EnrichmentContext["statusHistory"] = [
   { status: "ENRICHMENT_TRIGGERED", timestamp: 0 },
   { status: "WAITING_FOR_RESULTS", timestamp: 0 },
@@ -911,6 +939,50 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     );
   };
 
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const groupedElements = useMemo(() => {
+    if (!enrichmentResult?.elements.length) return [];
+    const groups = new Map<string, { label: string; elements: EnrichedElement[] }>();
+    enrichmentResult.elements.forEach((element, index) => {
+      const key = buildGroupKey(element, index);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.elements.push(element);
+        return;
+      }
+      groups.set(key, {
+        label: buildGroupLabel(key, element, index),
+        elements: [element],
+      });
+    });
+    return Array.from(groups.entries()).map(([key, value]) => ({
+      id: key || `group-${value.label}`,
+      label: value.label,
+      elements: value.elements,
+    }));
+  }, [enrichmentResult?.elements]);
+
+  useEffect(() => {
+    if (!groupedElements.length) {
+      setExpandedGroups(new Set());
+      return;
+    }
+    setExpandedGroups(new Set(groupedElements.map((group) => group.id)));
+  }, [groupedElements]);
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((previous) => {
+      const next = new Set(previous);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
   const handleRefreshStatus = async () => {
     if (!activeId) {
       setStatusFeedback({
@@ -1144,31 +1216,56 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
               </button>
             </div>
           ) : enrichmentResult?.elements.length ? (
-            <div className="mt-6 grid gap-6 xl:grid-cols-[300px,1fr]">
+            <div className="mt-6 grid gap-6 xl:grid-cols-[320px,1fr]">
               <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-400">Enriched elements</p>
-                <div className="mt-3 max-h-[420px] space-y-2 overflow-y-auto pr-1">
-                  {enrichmentResult.elements.map((element) => {
-                    const isActive = element.id === selectedElementId || (!selectedElementId && element.id === enrichmentResult.elements[0]?.id);
+                <p className="text-xs uppercase tracking-wide text-slate-400">Enriched sections</p>
+                <div className="mt-3 max-h-[420px] space-y-3 overflow-y-auto pr-2">
+                  {groupedElements.map((group) => {
+                    const isExpanded = expandedGroups.has(group.id);
                     return (
-                      <button
-                        key={element.id}
-                        type="button"
-                        onClick={() => setSelectedElementId(element.id)}
-                        className={`w-full rounded-xl border px-4 py-3 text-left transition ${
-                          isActive
-                            ? "border-indigo-200 bg-white shadow-sm"
-                            : "border-transparent bg-transparent hover:border-slate-200 hover:bg-white"
-                        }`}
-                      >
-                        <p className="text-xs uppercase tracking-wide text-slate-400">
-                          {element.path ?? "Enriched element"}
-                        </p>
-                        <p className="text-sm font-semibold text-slate-900">{element.title}</p>
-                        <p className="mt-1 truncate text-xs text-slate-500">
-                          {element.copy ?? element.summary ?? "No preview available."}
-                        </p>
-                      </button>
+                      <div key={group.id} className="rounded-xl border border-slate-100 bg-white">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(group.id)}
+                          className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm font-semibold text-slate-800"
+                        >
+                          <span className="flex-1 truncate">{group.label}</span>
+                          <span className="text-xs font-semibold text-slate-400">
+                            {group.elements.length}
+                          </span>
+                          {isExpanded ? (
+                            <ChevronDownIcon className="size-4 text-slate-400" />
+                          ) : (
+                            <ChevronRightIcon className="size-4 text-slate-400" />
+                          )}
+                        </button>
+                        {isExpanded && (
+                          <div className="space-y-1 border-t border-slate-100 bg-slate-50 px-3 py-2">
+                            {group.elements.map((element) => {
+                              const isActive = selectedElement?.id === element.id;
+                              return (
+                                <button
+                                  key={element.id}
+                                  type="button"
+                                  onClick={() => setSelectedElementId(element.id)}
+                                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
+                                    isActive
+                                      ? "border border-indigo-200 bg-white text-indigo-700 shadow-sm"
+                                      : "border border-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
+                                  }`}
+                                >
+                                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                                    {element.title ?? "Enriched element"}
+                                  </p>
+                                  <p className="truncate text-xs text-slate-500">
+                                    {element.copy ?? element.summary ?? "No preview available."}
+                                  </p>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

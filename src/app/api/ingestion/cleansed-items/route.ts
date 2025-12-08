@@ -141,7 +141,11 @@ export async function GET(request: NextRequest) {
     const upstream = await fetch(targetUrl);
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);
-    const items = normalizeItems(body);
+    const passthroughItems =
+      isRecord(body) && Array.isArray(body.items)
+        ? (body.items as NormalizedRow[])
+        : null;
+    const items = passthroughItems ?? normalizeItems(body);
 
     return NextResponse.json(
       {

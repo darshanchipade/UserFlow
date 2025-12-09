@@ -51,9 +51,8 @@ const statusStyles = {
 
 export function PipelineTracker({ current }: { current: StepId }) {
   const currentIndex = STEPS.findIndex((step) => step.id === current);
-
   return (
-    <nav className="hidden w-full flex-col gap-3 text-xs md:flex">
+    <nav className="w-full flex-col gap-3 text-xs">
       <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
           {STEPS.map((step, index) => {

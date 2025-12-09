@@ -992,7 +992,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     );
   };
 
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState(new Set<string>());
 
   const handleRefreshStatus = async () => {
     if (!activeId) {

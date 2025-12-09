@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowDownTrayIcon,
   ArrowPathIcon,
   ArrowUpTrayIcon,
   CheckCircleIcon,
@@ -12,6 +13,7 @@ import {
   InboxStackIcon,
   MagnifyingGlassIcon,
   ServerStackIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -219,6 +221,7 @@ export default function IngestionPage() {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [downloadInFlight, setDownloadInFlight] = useState<string | null>(null);
   const [historyHydrated, setHistoryHydrated] = useState(false);
   const [extractFeedback, setExtractFeedback] = useState<ApiFeedback>({
     state: "idle",
@@ -862,6 +865,53 @@ export default function IngestionPage() {
     }
   };
 
+  const handleDeleteUpload = (uploadId: string) => {
+    setUploads((previous) => previous.filter((upload) => upload.id !== uploadId));
+  };
+
+  const handleDownloadUpload = async (upload: UploadItem) => {
+    if (!upload.cleansedId) {
+      window.alert("Download is available after the backend returns a cleansed ID.");
+      return;
+    }
+    setDownloadInFlight(upload.id);
+    try {
+      const response = await fetch(`/api/ingestion/resume/${encodeURIComponent(upload.cleansedId)}`, {
+        method: "POST",
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Backend rejected the download request.");
+      }
+      const normalized =
+        typeof payload.body === "object" && payload.body !== null
+          ? JSON.stringify(payload.body, null, 2)
+          : typeof payload.rawBody === "string" && payload.rawBody.trim()
+            ? payload.rawBody
+            : JSON.stringify(payload, null, 2);
+      const blob = new Blob([normalized], { type: "application/json" });
+      const safeName = upload.name.split("/").pop()?.replace(/[^\w.-]+/g, "_") || "upload";
+      const fileName = `${safeName}-${upload.cleansedId}.json`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Unable to download upload payload.", error);
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Unable to download this upload. Please try again later.",
+      );
+    } finally {
+      setDownloadInFlight((current) => (current === upload.id ? null : current));
+    }
+  };
+
   const toggleNode = (nodeId: string) => {
     setExpandedNodes((previous) => {
       const next = new Set(previous);
@@ -1089,6 +1139,7 @@ export default function IngestionPage() {
               )}
               {uploads.map((upload) => {
                 const status = statusStyles[upload.status];
+                const downloading = downloadInFlight === upload.id;
                 return (
                   <div
                     key={upload.id}
@@ -1122,6 +1173,30 @@ export default function IngestionPage() {
                         <span className={clsx("size-2 rounded-full", status.dot)} />
                         {status.label}
                       </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadUpload(upload)}
+                          disabled={downloading}
+                          className={clsx(
+                            "rounded-full p-1 text-slate-900 transition hover:bg-slate-900/10",
+                            downloading && "cursor-wait opacity-60",
+                          )}
+                          title="Download payload"
+                          aria-label="Download payload"
+                        >
+                          <ArrowDownTrayIcon className="size-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUpload(upload.id)}
+                          className="rounded-full p-1 text-slate-900 transition hover:bg-slate-900/10"
+                          title="Delete entry"
+                          aria-label="Delete entry"
+                        >
+                          <TrashIcon className="size-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

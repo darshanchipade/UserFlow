@@ -900,12 +900,12 @@ export default function IngestionPage() {
                   disabled={tab.disabled}
                   onClick={() => !tab.disabled && setActiveTab(tab.id)}
                   className={clsx(
-                    "rounded-2xl border px-4 py-3 text-left transition",
+                    "rounded-2xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/50",
                     tab.disabled
                       ? "border-dashed border-slate-200 text-slate-400"
                       : activeTab === tab.id
-                        ? "border-indigo-500 bg-indigo-50"
-                        : "border-slate-200 hover:border-indigo-200",
+                        ? "border-slate-900 bg-slate-900/[0.04] shadow-[0_18px_35px_rgba(15,23,42,0.12)]"
+                        : "border-slate-200 hover:border-slate-900/40",
                   )}
                 >
                   <div className="flex items-center gap-3">

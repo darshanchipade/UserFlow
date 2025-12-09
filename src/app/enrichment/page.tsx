@@ -893,6 +893,54 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     return (derivedIndex / statuses.length) * 100;
   }, [currentStatus, statusHistory.length]);
 
+  const filteredElements = useMemo(() => {
+    if (!enrichmentResult?.elements.length) return [];
+    return enrichmentResult.elements.filter((element) => !shouldHideElement(element));
+  }, [enrichmentResult?.elements]);
+
+  const groupedElements = useMemo(() => {
+    if (!filteredElements.length) return [];
+    const groups = new Map<string, { label: string; elements: EnrichedElement[] }>();
+    filteredElements.forEach((element, index) => {
+      const key = buildGroupKey(element, index);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.elements.push(element);
+        return;
+      }
+      groups.set(key, {
+        label: buildGroupLabel(key, element, index),
+        elements: [element],
+      });
+    });
+    return Array.from(groups.entries()).map(([key, value]) => ({
+      id: key || `group-${value.label}-${value.elements.length}`,
+      label: value.label,
+      elements: value.elements,
+    }));
+  }, [filteredElements]);
+
+  useEffect(() => {
+    if (!groupedElements.length) {
+      setExpandedGroups(new Set());
+      return;
+    }
+    setExpandedGroups(new Set(groupedElements.map((group) => group.id)));
+  }, [groupedElements]);
+
+  useEffect(() => {
+    if (filteredElements.length) {
+      setSelectedElementId((current) => {
+        if (current && filteredElements.some((element) => element.id === current)) {
+          return current;
+        }
+        return filteredElements[0]?.id ?? null;
+      });
+    } else {
+      setSelectedElementId(null);
+    }
+  }, [filteredElements]);
+
   const metrics = enrichmentResult?.metrics ?? {};
   const totalFieldsTagged =
     metrics.totalFieldsTagged !== null && metrics.totalFieldsTagged !== undefined
@@ -945,53 +993,6 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
   };
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-
-  const filteredElements = useMemo(() => {
-    if (!enrichmentResult?.elements.length) return [];
-    return enrichmentResult.elements.filter((element) => !shouldHideElement(element));
-  }, [enrichmentResult?.elements]);
-
-  const groupedElements = useMemo(() => {
-    if (!filteredElements.length) return [];
-    const groups = new Map<string, { label: string; elements: EnrichedElement[] }>();
-    filteredElements.forEach((element, index) => {
-      const key = buildGroupKey(element, index);
-      const existing = groups.get(key);
-      if (existing) {
-        existing.elements.push(element);
-        return;
-      }
-      groups.set(key, {
-        label: buildGroupLabel(key, element, index),
-        elements: [element],
-      });
-    });
-    return Array.from(groups.entries()).map(([key, value]) => ({
-      id: key || `group-${value.label}-${value.elements.length}`,
-      label: value.label,
-      elements: value.elements,
-    }));
-  }, [filteredElements]);
-
-  useEffect(() => {
-    if (!groupedElements.length) {
-      setExpandedGroups(new Set());
-      return;
-    }
-    setExpandedGroups(new Set(groupedElements.map((group) => group.id)));
-  }, [groupedElements]);
-
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroups((previous) => {
-      const next = new Set(previous);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
-    });
-  };
 
   const handleRefreshStatus = async () => {
     if (!activeId) {

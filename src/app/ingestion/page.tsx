@@ -30,6 +30,7 @@ import {
 import { storeClientSnapshot } from "@/lib/client/snapshot-store";
 import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
 import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
+import { PipelineTracker } from "@/components/PipelineTracker";
 
 type UploadTab = "local" | "api" | "s3";
 

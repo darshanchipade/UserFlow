@@ -58,6 +58,15 @@ type EnrichmentOverview = {
   elements: EnrichedElement[];
 };
 
+const EXCLUDED_ITEM_TYPES = [
+  "analytics",
+  "disclaimers",
+  "pageanalyticsattributes",
+  "alt",
+  "analyticsattributes",
+  "url",
+];
+
 const STATUS_LABELS: Record<string, string> = {
   ENRICHMENT_TRIGGERED: "Queued for enrichment",
   WAITING_FOR_RESULTS: "Awaiting AI output",
@@ -560,6 +569,21 @@ const buildGroupLabel = (key: string, fallback: EnrichedElement, index: number) 
   return fallback.title?.trim() ?? `Element group ${index + 1}`;
 };
 
+const shouldHideElement = (element: EnrichedElement): boolean => {
+  const normalizedTitle = element.title?.toLowerCase().trim();
+  if (!normalizedTitle) {
+    return false;
+  }
+  return EXCLUDED_ITEM_TYPES.some((excluded) => {
+    return (
+      normalizedTitle === excluded ||
+      normalizedTitle.startsWith(`${excluded}[`) ||
+      normalizedTitle.startsWith(`${excluded}.`) ||
+      normalizedTitle.includes(`${excluded}:`)
+    );
+  });
+};
+
 const FALLBACK_HISTORY: EnrichmentContext["statusHistory"] = [
   { status: "ENRICHMENT_TRIGGERED", timestamp: 0 },
   { status: "WAITING_FOR_RESULTS", timestamp: 0 },
@@ -804,28 +828,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       } else {
         setRawSummary(null);
         setContext((previous) => {
-          if (!previous) return previous;
-          const now = Date.now();
-          const history = Array.isArray(previous.statusHistory) ? [...previous.statusHistory] : [];
-          const hasRunning = history.some((entry) => entry.status === "ENRICHMENT_RUNNING");
-          const hasComplete = history.some((entry) => entry.status === "ENRICHMENT_COMPLETE");
-          if (!hasRunning) {
-            history.push({
-              status: "ENRICHMENT_RUNNING",
-              timestamp: history[history.length - 1]?.timestamp ?? now - 60_000,
-            });
-          }
-          if (!hasComplete) {
-            history.push({
-              status: "ENRICHMENT_COMPLETE",
-              timestamp: now,
-            });
-          }
-          history.sort((a, b) => a.timestamp - b.timestamp);
-          return {
-            ...previous,
-            statusHistory: history,
-          };
+          return previous;
         });
       }
       setSummaryFeedback({ state: "idle" });
@@ -852,17 +855,17 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
   }, [context?.metadata.cleansedId]);
 
   useEffect(() => {
-    if (enrichmentResult?.elements.length) {
+    if (filteredElements.length) {
       setSelectedElementId((current) => {
-        if (current && enrichmentResult.elements.some((element) => element.id === current)) {
+        if (current && filteredElements.some((element) => element.id === current)) {
           return current;
         }
-        return enrichmentResult.elements[0]?.id ?? null;
+        return filteredElements[0]?.id ?? null;
       });
     } else {
       setSelectedElementId(null);
     }
-  }, [enrichmentResult?.elements]);
+  }, [filteredElements]);
 
   const statusHistory = context?.statusHistory?.length
     ? context.statusHistory
@@ -943,10 +946,15 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  const groupedElements = useMemo(() => {
+  const filteredElements = useMemo(() => {
     if (!enrichmentResult?.elements.length) return [];
+    return enrichmentResult.elements.filter((element) => !shouldHideElement(element));
+  }, [enrichmentResult?.elements]);
+
+  const groupedElements = useMemo(() => {
+    if (!filteredElements.length) return [];
     const groups = new Map<string, { label: string; elements: EnrichedElement[] }>();
-    enrichmentResult.elements.forEach((element, index) => {
+    filteredElements.forEach((element, index) => {
       const key = buildGroupKey(element, index);
       const existing = groups.get(key);
       if (existing) {
@@ -959,11 +967,11 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       });
     });
     return Array.from(groups.entries()).map(([key, value]) => ({
-      id: key || `group-${value.label}`,
+      id: key || `group-${value.label}-${value.elements.length}`,
       label: value.label,
       elements: value.elements,
     }));
-  }, [enrichmentResult?.elements]);
+  }, [filteredElements]);
 
   useEffect(() => {
     if (!groupedElements.length) {
@@ -1218,7 +1226,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
               </button>
             </div>
           ) : enrichmentResult?.elements.length ? (
-            <div className="mt-6 grid gap-6 xl:grid-cols-[320px,1fr]">
+            <div className="mt-6 grid gap-6 lg:grid-cols-[320px,minmax(0,1fr)]">
               <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-wide text-slate-400">Enriched sections</p>
                 <div className="mt-3 max-h-[420px] space-y-3 overflow-y-auto pr-2">

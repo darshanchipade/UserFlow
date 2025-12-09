@@ -16,6 +16,7 @@ import {
 import clsx from "clsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PipelineShell } from "@/components/PipelineShell";
 import { StageHero } from "@/components/StageHero";
 import {
   TreeNode,
@@ -867,7 +868,7 @@ export default function IngestionPage() {
     });
 
   return (
-    <div className="min-h-screen bg-[#f7f9fb]">
+    <PipelineShell currentStep="ingestion">
       <StageHero
         title="Ingestion"
         description="Upload local JSON files, paste API payloads, or reference cloud storage to kick off the pipeline."
@@ -1163,6 +1164,6 @@ export default function IngestionPage() {
           </div>
         </section>
       </main>
-    </div>
+    </PipelineShell>
   );
 }

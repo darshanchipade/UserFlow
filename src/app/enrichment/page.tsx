@@ -842,17 +842,40 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     }
   };
 
-  useEffect(() => {
-    loadContext(activeId).catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+  const filteredElements = useMemo(() => {
+    if (!enrichmentResult?.elements.length) return [];
+    return enrichmentResult.elements.filter((element) => !shouldHideElement(element));
+  }, [enrichmentResult?.elements]);
+
+  const groupedElements = useMemo(() => {
+    if (!filteredElements.length) return [];
+    const groups = new Map<string, { label: string; elements: EnrichedElement[] }>();
+    filteredElements.forEach((element, index) => {
+      const key = buildGroupKey(element, index);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.elements.push(element);
+        return;
+      }
+      groups.set(key, {
+        label: buildGroupLabel(key, element, index),
+        elements: [element],
+      });
+    });
+    return Array.from(groups.entries()).map(([key, value]) => ({
+      id: key || `group-${value.label}-${value.elements.length}`,
+      label: value.label,
+      elements: value.elements,
+    }));
+  }, [filteredElements]);
 
   useEffect(() => {
-    if (context?.metadata.cleansedId) {
-      fetchSummary(context.metadata.cleansedId, true);
+    if (!groupedElements.length) {
+      setExpandedGroups(new Set());
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context?.metadata.cleansedId]);
+    setExpandedGroups(new Set(groupedElements.map((group) => group.id)));
+  }, [groupedElements]);
 
   useEffect(() => {
     if (filteredElements.length) {
@@ -866,6 +889,18 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       setSelectedElementId(null);
     }
   }, [filteredElements]);
+
+  useEffect(() => {
+    loadContext(activeId).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  useEffect(() => {
+    if (context?.metadata.cleansedId) {
+      fetchSummary(context.metadata.cleansedId, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context?.metadata.cleansedId]);
 
   const statusHistory = context?.statusHistory?.length
     ? context.statusHistory

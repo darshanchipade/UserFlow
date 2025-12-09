@@ -909,7 +909,16 @@ export default function IngestionPage() {
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    <tab.icon className="size-5 text-slate-500" />
+                    <tab.icon
+                      className={clsx(
+                        "size-5 transition-colors",
+                        tab.disabled
+                          ? "text-slate-300"
+                          : activeTab === tab.id
+                            ? "text-slate-900"
+                            : "text-slate-700",
+                      )}
+                    />
                     <div>
                       <p className="text-sm font-semibold text-slate-900">
                         {tab.title}

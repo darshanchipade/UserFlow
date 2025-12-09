@@ -8,6 +8,7 @@ import {
   saveEnrichmentContext,
   type CleansedContext,
 } from "@/lib/extraction-context";
+import { PipelineShell } from "@/components/PipelineShell";
 import { StageHero } from "@/components/StageHero";
 import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
@@ -434,11 +435,10 @@ export default function CleansingPage() {
   const sourceIdentifier = context.metadata.sourceIdentifier ?? "—";
 
   return (
-    <div className="min-h-screen bg-[#f7f9fb]">
+    <PipelineShell currentStep="cleansing">
       <StageHero
         title="Cleansing"
         description={`Review cleansed output for ${context.metadata.name} before sending it forward.`}
-        currentStep="cleansing"
         actionsSlot={<FeedbackPill feedback={enrichmentFeedback} />}
       />
 
@@ -614,6 +614,6 @@ export default function CleansingPage() {
           </div>
         </section>
       </main>
-    </div>
+    </PipelineShell>
   );
 }

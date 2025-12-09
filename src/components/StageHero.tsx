@@ -1,10 +1,8 @@
 import type { ReactNode } from "react";
-import { PipelineTracker, type StepId } from "@/components/PipelineTracker";
 
 type StageHeroProps = {
   title: string;
   description?: string;
-  currentStep: StepId;
   eyebrow?: string;
   actionsSlot?: ReactNode;
 };
@@ -12,7 +10,6 @@ type StageHeroProps = {
 export function StageHero({
   title,
   description,
-  currentStep,
   eyebrow = "Content Lake",
   actionsSlot,
 }: StageHeroProps) {
@@ -30,7 +27,6 @@ export function StageHero({
             <span className="text-lg font-semibold text-slate-900">Content Lake</span>
           </div>
         </div>
-        <PipelineTracker current={currentStep} />
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
             <h1 className="text-4xl font-semibold text-slate-900">{title}</h1>

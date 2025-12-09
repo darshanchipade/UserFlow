@@ -8,6 +8,7 @@ import {
   loadEnrichmentContext,
   type EnrichmentContext,
 } from "@/lib/extraction-context";
+import { PipelineShell } from "@/components/PipelineShell";
 import { StageHero } from "@/components/StageHero";
 import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
@@ -1062,11 +1063,10 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
   const sourceIdentifier = context.metadata.sourceIdentifier ?? "—";
 
   return (
-    <div className="min-h-screen bg-[#f7f9fb]">
+    <PipelineShell currentStep="enrichment">
       <StageHero
         title="Enrichment"
         description={`Monitor enrichment for ${context.metadata.name}`}
-        currentStep="enrichment"
         actionsSlot={
           statusFeedback.state !== "idle" ? (
             <div
@@ -1434,6 +1434,6 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
           </div>
         </section>
       </main>
-    </div>
+    </PipelineShell>
   );
 }

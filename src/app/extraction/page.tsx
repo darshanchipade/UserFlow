@@ -26,6 +26,7 @@ import {
 } from "@/lib/extraction-context";
 import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
 import { readClientSnapshot } from "@/lib/client/snapshot-store";
+import { PipelineShell } from "@/components/PipelineShell";
 import { StageHero } from "@/components/StageHero";
 import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
@@ -557,11 +558,10 @@ export default function ExtractionPage() {
     context.metadata.sourceIdentifier ?? context.metadata.source ?? "—";
 
   return (
-    <div className="min-h-screen bg-[#f7f9fb]">
+    <PipelineShell currentStep="extraction">
       <StageHero
         title="Extraction"
         description="Data extracted and converted to JSON format (Postgres/Neon)."
-        currentStep="extraction"
         actionsSlot={<FeedbackPill feedback={feedback} />}
       />
 
@@ -723,6 +723,6 @@ export default function ExtractionPage() {
           </dl>
         </section>
       </main>
-    </div>
+    </PipelineShell>
   );
 }

@@ -947,10 +947,11 @@ export default function IngestionPage() {
                   }}
                   className="flex cursor-pointer flex-col items-center gap-4"
                 >
-                  <ArrowUpTrayIcon className="size-10 text-indigo-500" />
+                  <ArrowUpTrayIcon className="size-10 text-slate-900" />
                   <div>
                     <p className="text-sm font-semibold text-slate-900">
-                      Drag a JSON file here or <span className="text-indigo-600 underline">browse</span>
+                      Drag a JSON file here or{" "}
+                      <span className="underline decoration-slate-900/40">browse</span>
                     </p>
                     <p className="text-xs text-slate-500">
                       Single-file uploads only. Max 50 MB.
@@ -976,7 +977,7 @@ export default function IngestionPage() {
             {activeTab === "api" && (
               <div className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <ServerStackIcon className="size-5 text-indigo-500" />
+                  <ServerStackIcon className="size-5 text-slate-900" />
                   POST /api/ingest-json-payload
                 </div>
                 <textarea
@@ -1000,7 +1001,7 @@ export default function IngestionPage() {
             {activeTab === "s3" && (
               <div className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <CloudArrowUpIcon className="size-5 text-indigo-500" />
+                  <CloudArrowUpIcon className="size-5 text-slate-900" />
                   GET /api/extract-cleanse-enrich-and-store
                 </div>
                 <input

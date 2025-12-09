@@ -408,6 +408,8 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
         "label",
         "name",
         "field",
+        "originalFieldName",
+        "original_field_name",
         "section",
         "heading",
         "elementTitle",

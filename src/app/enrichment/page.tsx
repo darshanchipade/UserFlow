@@ -562,10 +562,17 @@ const buildGroupLabel = (key: string, fallback: EnrichedElement, index: number) 
   if (key.startsWith("title:")) {
     return key.replace(/^title:/, "");
   }
+  const normalizedTitle = fallback.title?.trim();
+  if (
+    normalizedTitle &&
+    !EXCLUDED_ITEM_TYPES.some((excluded) => normalizedTitle.toLowerCase().startsWith(excluded))
+  ) {
+    return normalizedTitle;
+  }
   if (fallback.path?.trim()) {
     return humanizePath(fallback.path);
   }
-  return fallback.title?.trim() ?? `Element group ${index + 1}`;
+  return `Section ${index + 1}`;
 };
 
 const shouldHideElement = (element: EnrichedElement): boolean => {

@@ -912,6 +912,11 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     background: "bg-slate-100",
   };
 
+  const filteredElements = useMemo(() => {
+    if (!enrichmentResult?.elements.length) return [];
+    return enrichmentResult.elements.filter((element) => !shouldHideElement(element));
+  }, [enrichmentResult?.elements]);
+
   const progress = useMemo(() => {
     const statuses = [
       "ENRICHMENT_TRIGGERED",
@@ -927,11 +932,6 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     const derivedIndex = Math.min(statusHistory.length, statuses.length);
     return (derivedIndex / statuses.length) * 100;
   }, [currentStatus, statusHistory.length]);
-
-  const filteredElements = useMemo(() => {
-    if (!enrichmentResult?.elements.length) return [];
-    return enrichmentResult.elements.filter((element) => !shouldHideElement(element));
-  }, [enrichmentResult?.elements]);
 
   const groupedElements = useMemo(() => {
     if (!filteredElements.length) return [];

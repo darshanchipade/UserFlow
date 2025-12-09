@@ -716,7 +716,7 @@ export default function EnrichmentPage() {
   const [summaryFeedback, setSummaryFeedback] = useState<SummaryFeedback>({ state: "idle" });
   const [enrichmentResult, setEnrichmentResult] = useState<EnrichmentOverview | null>(null);
   const [rawSummary, setRawSummary] = useState<string | null>(null);
-  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [expandedElementId, setExpandedElementId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(
     queryId ?? localSnapshot?.metadata.cleansedId ?? null,
   );
@@ -869,26 +869,38 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     }));
   }, [filteredElements]);
 
+  const [expandedGroups, setExpandedGroups] = useState(new Set<string>());
+
   useEffect(() => {
     if (!groupedElements.length) {
       setExpandedGroups(new Set());
+      setExpandedElementId(null);
       return;
     }
     setExpandedGroups(new Set(groupedElements.map((group) => group.id)));
-  }, [groupedElements]);
+    setExpandedElementId((current) => {
+      if (current && filteredElements.some((element) => element.id === current)) {
+        return current;
+      }
+      return filteredElements[0]?.id ?? null;
+    });
+  }, [groupedElements, filteredElements]);
 
-  useEffect(() => {
-    if (filteredElements.length) {
-      setSelectedElementId((current) => {
-        if (current && filteredElements.some((element) => element.id === current)) {
-          return current;
-        }
-        return filteredElements[0]?.id ?? null;
-      });
-    } else {
-      setSelectedElementId(null);
-    }
-  }, [filteredElements]);
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((previous) => {
+      const next = new Set(previous);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
+  const toggleElementDetails = (elementId: string) => {
+    setExpandedElementId((current) => (current === elementId ? null : elementId));
+  };
 
   useEffect(() => {
     loadContext(activeId).catch(() => undefined);
@@ -911,11 +923,6 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     dot: "bg-slate-300",
     background: "bg-slate-100",
   };
-
-  const filteredElements = useMemo(() => {
-    if (!enrichmentResult?.elements.length) return [];
-    return enrichmentResult.elements.filter((element) => !shouldHideElement(element));
-  }, [enrichmentResult?.elements]);
 
   const progress = useMemo(() => {
     const statuses = [
@@ -958,23 +965,17 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
   useEffect(() => {
     if (!groupedElements.length) {
       setExpandedGroups(new Set());
+      setExpandedElementId(null);
       return;
     }
     setExpandedGroups(new Set(groupedElements.map((group) => group.id)));
-  }, [groupedElements]);
-
-  useEffect(() => {
-    if (filteredElements.length) {
-      setSelectedElementId((current) => {
-        if (current && filteredElements.some((element) => element.id === current)) {
-          return current;
-        }
-        return filteredElements[0]?.id ?? null;
-      });
-    } else {
-      setSelectedElementId(null);
-    }
-  }, [filteredElements]);
+    setExpandedElementId((current) => {
+      if (current && filteredElements.some((element) => element.id === current)) {
+        return current;
+      }
+      return filteredElements[0]?.id ?? null;
+    });
+  }, [groupedElements, filteredElements]);
 
   const metrics = enrichmentResult?.metrics ?? {};
   const totalFieldsTagged =
@@ -1000,15 +1001,6 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
   const errorsDisplay =
     errorsFoundMetric !== null ? Math.max(0, Math.round(errorsFoundMetric)) : null;
 
-  const selectedElement = useMemo(() => {
-    if (!enrichmentResult?.elements.length) return null;
-    if (selectedElementId) {
-      const match = enrichmentResult.elements.find((element) => element.id === selectedElementId);
-      if (match) return match;
-    }
-    return enrichmentResult.elements[0] ?? null;
-  }, [enrichmentResult?.elements, selectedElementId]);
-
   const renderChipList = (items: string[], emptyLabel: string) => {
     if (!items.length) {
       return <p className="text-sm text-slate-500">{emptyLabel}</p>;
@@ -1026,8 +1018,6 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       </div>
     );
   };
-
-  const [expandedGroups, setExpandedGroups] = useState(new Set<string>());
 
   const handleRefreshStatus = async () => {
     if (!activeId) {
@@ -1262,129 +1252,156 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
               </button>
             </div>
           ) : enrichmentResult?.elements.length ? (
-            <div className="mt-6 grid gap-6 lg:grid-cols-[320px,minmax(0,1fr)]">
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-400">Enriched sections</p>
-                <div className="mt-3 max-h-[420px] space-y-3 overflow-y-auto pr-2">
-                  {groupedElements.map((group) => {
-                    const isExpanded = expandedGroups.has(group.id);
-                    return (
-                      <div key={group.id} className="rounded-xl border border-slate-100 bg-white">
-                        <button
-                          type="button"
-                          onClick={() => toggleGroup(group.id)}
-                          className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm font-semibold text-slate-800"
-                        >
-                          <span className="flex-1 truncate">{group.label}</span>
-                          <span className="text-xs font-semibold text-slate-400">
-                            {group.elements.length}
-                          </span>
-                          {isExpanded ? (
-                            <ChevronDownIcon className="size-4 text-slate-400" />
-                          ) : (
-                            <ChevronRightIcon className="size-4 text-slate-400" />
-                          )}
-                        </button>
-                        {isExpanded && (
-                          <div className="space-y-1 border-t border-slate-100 bg-slate-50 px-3 py-2">
-                            {group.elements.map((element) => {
-                              const isActive = selectedElement?.id === element.id;
-                              return (
+            <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Enriched sections</p>
+              <div className="mt-3 max-h-[480px] space-y-3 overflow-y-auto pr-2">
+                {groupedElements.map((group) => {
+                  const isExpanded = expandedGroups.has(group.id);
+                  return (
+                    <div key={group.id} className="rounded-xl border border-slate-100 bg-white">
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(group.id)}
+                        className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm font-semibold text-slate-800"
+                      >
+                        <span className="flex-1 truncate">{group.label}</span>
+                        <span className="text-xs font-semibold text-slate-400">
+                          {group.elements.length}
+                        </span>
+                        {isExpanded ? (
+                          <ChevronDownIcon className="size-4 text-slate-400" />
+                        ) : (
+                          <ChevronRightIcon className="size-4 text-slate-400" />
+                        )}
+                      </button>
+                      {isExpanded && (
+                        <div className="space-y-2 border-t border-slate-100 bg-slate-50 px-3 py-3">
+                          {group.elements.map((element) => {
+                            const isDetailVisible = expandedElementId === element.id;
+                            return (
+                              <div
+                                key={element.id}
+                                className="rounded-lg border border-slate-200 bg-white"
+                              >
                                 <button
-                                  key={element.id}
                                   type="button"
-                                  onClick={() => setSelectedElementId(element.id)}
-                                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                                    isActive
-                                      ? "border border-indigo-200 bg-white text-indigo-700 shadow-sm"
-                                      : "border border-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
-                                  }`}
+                                  onClick={() => toggleElementDetails(element.id)}
+                                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-slate-800"
                                 >
-                                  <p className="text-xs uppercase tracking-wide text-slate-400">
-                                    {element.title ?? "Enriched element"}
-                                  </p>
-                                  <p className="truncate text-xs text-slate-500">
-                                    {element.copy ?? element.summary ?? "No preview available."}
-                                  </p>
+                                  <div className="flex flex-col flex-1">
+                                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                                      {element.title ?? "Enriched element"}
+                                    </p>
+                                    <p className="truncate text-xs text-slate-500">
+                                      {element.copy ?? element.summary ?? "No preview available."}
+                                    </p>
+                                  </div>
+                                  {isDetailVisible ? (
+                                    <ChevronDownIcon className="size-4 text-slate-400" />
+                                  ) : (
+                                    <ChevronRightIcon className="size-4 text-slate-400" />
+                                  )}
                                 </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-slate-100 p-4">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">Enriched copy</p>
-                  <p className="mt-2 text-sm text-slate-800">
-                    {selectedElement?.copy ?? "No enriched copy provided yet."}
-                  </p>
-                </div>
-                <div className="grid gap-4 lg:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-100 p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-400">
-                          Content insights
-                        </p>
-                        <h3 className="text-base font-semibold text-slate-900">Summary</h3>
-                      </div>
-                      <span className="text-xs font-semibold text-slate-500">
-                        {selectedElement?.classification?.length ? "2 fields" : "1 field"}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm text-slate-700">
-                      {selectedElement?.summary ?? "Summary not available yet."}
-                    </p>
-                    <div className="mt-4">
-                      <p className="text-xs uppercase tracking-wide text-slate-400">Classification</p>
-                      {renderChipList(
-                        selectedElement?.classification ?? [],
-                        "No classification detected.",
+                                {isDetailVisible && (
+                                  <div className="space-y-4 border-t border-slate-100 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+                                    <div>
+                                      <p className="text-xs uppercase tracking-wide text-slate-400">
+                                        Enriched copy
+                                      </p>
+                                      <p className="mt-1 text-sm text-slate-800">
+                                        {element.copy ?? "No enriched copy provided yet."}
+                                      </p>
+                                    </div>
+                                    <div className="grid gap-4 lg:grid-cols-3">
+                                      <div className="rounded-xl border border-slate-100 bg-white p-4">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div>
+                                            <p className="text-xs uppercase tracking-wide text-slate-400">
+                                              Content insights
+                                            </p>
+                                            <h3 className="text-base font-semibold text-slate-900">
+                                              Summary
+                                            </h3>
+                                          </div>
+                                          <span className="text-xs font-semibold text-slate-500">
+                                            {element.classification?.length ? "2 fields" : "1 field"}
+                                          </span>
+                                        </div>
+                                        <p className="mt-3 text-sm text-slate-700">
+                                          {element.summary ?? "Summary not available yet."}
+                                        </p>
+                                        <div className="mt-4">
+                                          <p className="text-xs uppercase tracking-wide text-slate-400">
+                                            Classification
+                                          </p>
+                                          {renderChipList(
+                                            element.classification ?? [],
+                                            "No classification detected.",
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="rounded-xl border border-slate-100 bg-white p-4">
+                                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                                          Search metadata
+                                        </p>
+                                       <div className="mt-4 space-y-4">
+                                          <div>
+                                            <p className="text-xs uppercase tracking-wide text-slate-400">
+                                              Keywords
+                                            </p>
+                                            {renderChipList(
+                                              element.keywords ?? [],
+                                              "Keywords pending enrichment.",
+                                            )}
+                                          </div>
+                                          <div>
+                                            <p className="text-xs uppercase tracking-wide text-slate-400">
+                                              Content tags
+                                            </p>
+                                            {renderChipList(
+                                              element.tags ?? [],
+                                              "Tags pending enrichment.",
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="rounded-xl border border-slate-100 bg-white p-4">
+                                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                                          Tone & sentiment
+                                        </p>
+                                        <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                                          {element.sentiment ? (
+                                            <>
+                                              <p className="text-sm font-semibold text-emerald-700">
+                                                {element.sentiment.label}
+                                              </p>
+                                              {element.sentiment.score !== undefined && (
+                                                <p className="text-xs text-emerald-800">
+                                                  Score: {Math.round(element.sentiment.score * 100) / 100}
+                                                </p>
+                                              )}
+                                            </>
+                                          ) : (
+                                            <p className="text-sm text-emerald-800/80">
+                                              Sentiment analytics will appear after enrichment completes.
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
-                  </div>
-                  <div className="rounded-2xl border border-slate-100 p-4">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Search metadata</p>
-                    <div className="mt-4 space-y-4">
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-400">Keywords</p>
-                        {renderChipList(
-                          selectedElement?.keywords ?? [],
-                          "Keywords pending enrichment.",
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-400">Content tags</p>
-                        {renderChipList(selectedElement?.tags ?? [], "Tags pending enrichment.")}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-slate-100 p-4">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Tone & sentiment</p>
-                    <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                      {selectedElement?.sentiment ? (
-                        <>
-                          <p className="text-sm font-semibold text-emerald-700">
-                            {selectedElement.sentiment.label}
-                          </p>
-                          {selectedElement.sentiment.score !== undefined && (
-                            <p className="text-xs text-emerald-800">
-                              Score: {Math.round(selectedElement.sentiment.score * 100) / 100}
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <p className="text-sm text-emerald-800/80">
-                          Sentiment analytics will appear after enrichment completes.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  );
+                })}
+                {!groupedElements.length && (
+                  <p className="text-sm text-slate-500">No enriched sections available yet.</p>
+                )}
               </div>
             </div>
           ) : rawSummary ? (

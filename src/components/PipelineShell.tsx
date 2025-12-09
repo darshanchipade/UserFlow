@@ -56,15 +56,10 @@ export function PipelineShell({ currentStep, children }: PipelineShellProps) {
 
         <nav className="mt-10 flex flex-1 flex-col gap-8 text-sm">
           <NavSection title="Workspace" links={workspaceLinks} />
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-              Pipeline
-            </p>
-            <div className="mt-3 space-y-1.5">
-              {pipelineLinks.map((link) => (
-                <PipelineNavLink key={link.id} link={link} active={link.id === currentStep} />
-              ))}
-            </div>
+          <div className="space-y-1.5">
+            {pipelineLinks.map((link) => (
+              <PipelineNavLink key={link.id} link={link} active={link.id === currentStep} />
+            ))}
           </div>
         </nav>
 

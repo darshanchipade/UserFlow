@@ -414,6 +414,8 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
       `element-${index}`;
     const title =
       pickFromSources(sources, [
+        "item_original_field_name",
+        "itemOriginalFieldName",
         "originalFieldName",
         "original_field_name",
         "title",
@@ -428,7 +430,10 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
       ]) ?? `Element ${index + 1}`;
     const path =
       pickFromSources(sources, [
+        "item_source_path",
+        "itemSourcePath",
         "path",
+        "source_path",
         "breadcrumb",
         "hierarchy",
         "location",
@@ -1250,15 +1255,16 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
                         <div className="space-y-2 border-t border-slate-100 bg-slate-50 px-3 py-3">
                           {group.elements.map((element, elementIndex) => {
                             const isDetailVisible = expandedElementId === element.id;
+                            const sourcePath = element.path?.trim();
+                            const normalizedTitle = element.title?.trim() ?? "";
                             const primaryLabel =
-                              element.title ??
-                              (element.path ? humanizePath(element.path) : undefined) ??
-                              `Field ${elementIndex + 1}`;
-                            const secondaryLabel = element.path
-                              ? humanizePath(element.path)
-                              : element.summary ??
-                                element.copy ??
-                                "No preview available.";
+                              normalizedTitle.length > 0
+                                ? normalizedTitle
+                                : sourcePath
+                                  ? humanizePath(sourcePath)
+                                  : `Field ${elementIndex + 1}`;
+                            const fallbackPreview =
+                              element.summary ?? element.copy ?? "No preview available.";
                             return (
                               <div
                                 key={element.id}
@@ -1270,12 +1276,21 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
                                   className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-slate-800"
                                 >
                                   <div className="flex flex-col flex-1">
-                                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                                    <p className="text-sm font-semibold text-slate-900">
                                       {primaryLabel}
                                     </p>
-                                    <p className="truncate text-xs text-slate-500">
-                                      {secondaryLabel}
-                                    </p>
+                                    {sourcePath ? (
+                                      <p className="truncate text-xs text-slate-500">
+                                        Source path ·{" "}
+                                        <span className="font-semibold text-slate-700">
+                                          {sourcePath}
+                                        </span>
+                                      </p>
+                                    ) : (
+                                      <p className="truncate text-xs text-slate-500">
+                                        {fallbackPreview}
+                                      </p>
+                                    )}
                                   </div>
                                   {isDetailVisible ? (
                                     <ChevronDownIcon className="size-4 text-slate-400" />

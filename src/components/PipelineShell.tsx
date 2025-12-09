@@ -2,12 +2,8 @@ import {
   ArrowPathRoundedSquareIcon,
   ArrowTrendingUpIcon,
   BoltIcon,
-  ChartBarIcon,
   CloudArrowUpIcon,
-  DocumentTextIcon,
   HomeModernIcon,
-  InboxStackIcon,
-  SparklesIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import Link from "next/link";
@@ -18,18 +14,6 @@ type PipelineShellProps = {
   currentStep: StepId;
   children: ReactNode;
 };
-
-const pipelineLinks: Array<{
-  id: StepId;
-  label: string;
-  href: string;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
-}> = [
-  { id: "ingestion", label: "Ingestion", href: "/ingestion", icon: InboxStackIcon },
-  { id: "extraction", label: "Extraction", href: "/extraction", icon: DocumentTextIcon },
-  { id: "cleansing", label: "Cleansing", href: "/cleansing", icon: SparklesIcon },
-  { id: "enrichment", label: "Enrichment", href: "/enrichment", icon: ChartBarIcon },
-];
 
 const workspaceLinks = [
   { label: "Workspace Overview", href: "/ingestion", icon: HomeModernIcon },
@@ -56,11 +40,6 @@ export function PipelineShell({ currentStep, children }: PipelineShellProps) {
 
         <nav className="mt-10 flex flex-1 flex-col gap-8 text-sm">
           <NavSection title="Workspace" links={workspaceLinks} />
-          <div className="space-y-1.5">
-            {pipelineLinks.map((link) => (
-              <PipelineNavLink key={link.id} link={link} active={link.id === currentStep} />
-            ))}
-          </div>
         </nav>
 
         <div className="space-y-4 text-xs text-slate-500">
@@ -133,28 +112,5 @@ function NavSection({ title, links }: { title: string; links: NavLink[] }) {
         ))}
       </div>
     </div>
-  );
-}
-
-function PipelineNavLink({
-  link,
-  active,
-}: {
-  link: (typeof pipelineLinks)[number];
-  active: boolean;
-}) {
-  return (
-    <Link
-      href={link.href}
-      className={clsx(
-        "flex items-center gap-3 rounded-2xl px-3 py-2 font-semibold transition",
-        active
-          ? "bg-slate-900 text-white shadow-[0_18px_30px_rgba(15,23,42,0.25)]"
-          : "text-slate-500 hover:text-slate-900",
-      )}
-    >
-      <link.icon className={clsx("size-4", active ? "text-white" : "text-slate-900")} />
-      {link.label}
-    </Link>
   );
 }

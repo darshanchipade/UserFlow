@@ -1275,8 +1275,17 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
                       </button>
                       {isExpanded && (
                         <div className="space-y-2 border-t border-slate-100 bg-slate-50 px-3 py-3">
-                          {group.elements.map((element) => {
+                          {group.elements.map((element, elementIndex) => {
                             const isDetailVisible = expandedElementId === element.id;
+                            const primaryLabel =
+                              element.title ??
+                              (element.path ? humanizePath(element.path) : undefined) ??
+                              `Field ${elementIndex + 1}`;
+                            const secondaryLabel = element.path
+                              ? humanizePath(element.path)
+                              : element.summary ??
+                                element.copy ??
+                                "No preview available.";
                             return (
                               <div
                                 key={element.id}
@@ -1289,10 +1298,10 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
                                 >
                                   <div className="flex flex-col flex-1">
                                     <p className="text-xs uppercase tracking-wide text-slate-400">
-                                      {element.title ?? `Element ${group.elements.indexOf(element) + 1}`}
+                                      {primaryLabel}
                                     </p>
                                     <p className="truncate text-xs text-slate-500">
-                                      {element.copy ?? element.summary ?? "No preview available."}
+                                      {secondaryLabel}
                                     </p>
                                   </div>
                                   {isDetailVisible ? (

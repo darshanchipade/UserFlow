@@ -17,7 +17,7 @@ type PipelineShellProps = {
 
 const workspaceLinks = [
   { label: "Workspace Overview", href: "/ingestion", icon: HomeModernIcon },
-  { label: "Upload Activity", href: "/ingestion#history", icon: CloudArrowUpIcon },
+  { label: "Upload Activity", href: "/ingestion/activity", icon: CloudArrowUpIcon },
   { label: "Pipeline Health", href: "/extraction", icon: ArrowTrendingUpIcon },
   { label: "Automation", href: "/cleansing", icon: BoltIcon },
 ];

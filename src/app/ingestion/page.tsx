@@ -34,31 +34,19 @@ import {
 import { storeClientSnapshot } from "@/lib/client/snapshot-store";
 import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
 import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
+import {
+  readUploadHistory,
+  writeUploadHistory,
+  type UploadHistoryItem,
+  type UploadStatus,
+} from "@/lib/upload-history";
 
 type UploadTab = "local" | "api" | "s3";
-
-type UploadStatus = "uploading" | "success" | "error";
-
-type UploadItem = {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  source: "Local" | "API" | "S3";
-  status: UploadStatus;
-  createdAt: number;
-  cleansedId?: string;
-  backendStatus?: string;
-  backendMessage?: string;
-};
 
 type ApiFeedback = {
   state: "idle" | "loading" | "success" | "error";
   message?: string;
 };
-
-const UPLOAD_HISTORY_STORAGE_KEY = "content-lake.upload-history.v1";
-const MAX_UPLOAD_HISTORY = 25;
 
 const uploadTabs = [
   {
@@ -191,23 +179,6 @@ const FeedbackPill = ({ feedback }: { feedback: ApiFeedback }) => {
   );
 };
 
-const sanitizeUploadHistory = (value: unknown): UploadItem[] => {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((entry): entry is UploadItem => {
-      if (!entry || typeof entry !== "object") return false;
-      const record = entry as Partial<UploadItem>;
-      return (
-        typeof record.id === "string" &&
-        typeof record.name === "string" &&
-        typeof record.source === "string" &&
-        typeof record.status === "string" &&
-        typeof record.createdAt === "number"
-      );
-    })
-    .slice(0, MAX_UPLOAD_HISTORY);
-};
-
 export default function IngestionPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -220,7 +191,7 @@ export default function IngestionPage() {
   const [previewLabel, setPreviewLabel] = useState("Awaiting content");
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
-  const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [uploads, setUploads] = useState<UploadHistoryItem[]>([]);
   const [downloadInFlight, setDownloadInFlight] = useState<string | null>(null);
   const [historyHydrated, setHistoryHydrated] = useState(false);
   const [extractFeedback, setExtractFeedback] = useState<ApiFeedback>({
@@ -259,31 +230,16 @@ export default function IngestionPage() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const stored = window.localStorage.getItem(UPLOAD_HISTORY_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        const sanitized = sanitizeUploadHistory(parsed);
-        if (sanitized.length) {
-          setUploads(sanitized);
-        }
-      }
-    } catch {
-      // ignore hydration issues
-    } finally {
-      setHistoryHydrated(true);
+    const history = readUploadHistory();
+    if (history.length) {
+      setUploads(history);
     }
+    setHistoryHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (!historyHydrated || typeof window === "undefined") return;
-    try {
-      const trimmed = uploads.slice(0, MAX_UPLOAD_HISTORY);
-      window.localStorage.setItem(UPLOAD_HISTORY_STORAGE_KEY, JSON.stringify(trimmed));
-    } catch {
-      // ignore persistence issues
-    }
+    if (!historyHydrated) return;
+    writeUploadHistory(uploads);
   }, [uploads, historyHydrated]);
 
   const seedPreviewTree = (label: string, payload: unknown): TreeNode[] => {
@@ -393,6 +349,9 @@ export default function IngestionPage() {
     });
     const payload = await response.json();
     const details = parseBackendPayload(payload);
+    const fallbackIdentifier = `file-upload:${localFile.name}`;
+    const sourceIdentifier = details.sourceIdentifier ?? fallbackIdentifier;
+    const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "file") ?? "file";
 
     setUploads((previous) =>
       previous.map((item) =>
@@ -403,6 +362,8 @@ export default function IngestionPage() {
               cleansedId: details.cleansedId ?? item.cleansedId,
               backendStatus: details.status ?? item.backendStatus,
               backendMessage: details.message ?? item.backendMessage,
+              sourceIdentifier,
+              sourceType,
             }
           : item,
       ),
@@ -417,9 +378,6 @@ export default function IngestionPage() {
       return;
     }
 
-    const fallbackIdentifier = `file-upload:${localFile.name}`;
-    const sourceIdentifier = details.sourceIdentifier ?? fallbackIdentifier;
-    const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "file") ?? "file";
     const metadata: ExtractionContext["metadata"] = {
       name: localFile.name,
       size: localFile.size,
@@ -520,6 +478,9 @@ export default function IngestionPage() {
     });
     const payload = await response.json();
     const details = parseBackendPayload(payload);
+    const fallbackIdentifier = details.cleansedId ?? `api-payload:${uploadId}`;
+    const sourceIdentifier = details.sourceIdentifier ?? fallbackIdentifier;
+    const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "api") ?? "api";
 
     setUploads((previous) =>
       previous.map((upload) =>
@@ -529,8 +490,9 @@ export default function IngestionPage() {
               status: response.ok ? "success" : "error",
               cleansedId: details.cleansedId ?? upload.cleansedId,
               backendStatus: details.status ?? upload.backendStatus,
-              backendMessage:
-                details.message ?? upload.backendMessage,
+              backendMessage: details.message ?? upload.backendMessage,
+              sourceIdentifier,
+              sourceType,
             }
           : upload,
       ),
@@ -554,9 +516,6 @@ export default function IngestionPage() {
 
     const previewNodes = seedPreviewTree("API payload", parsed);
 
-    const fallbackIdentifier = details.cleansedId ?? `api-payload:${uploadId}`;
-    const sourceIdentifier = details.sourceIdentifier ?? fallbackIdentifier;
-    const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "api") ?? "api";
     const metadata: ExtractionContext["metadata"] = {
       name: "API payload",
       size: apiPayload.length,
@@ -649,6 +608,8 @@ export default function IngestionPage() {
     });
     const payload = await response.json();
     const details = parseBackendPayload(payload);
+    const sourceIdentifier = details.sourceIdentifier ?? normalized;
+    const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "s3") ?? "s3";
 
     setUploads((previous) =>
       previous.map((upload) =>
@@ -659,8 +620,9 @@ export default function IngestionPage() {
               cleansedId: details.cleansedId ?? upload.cleansedId,
               backendStatus:
                 details.status ?? (response.ok ? "ACCEPTED" : upload.backendStatus),
-              backendMessage:
-                details.message ?? upload.backendMessage,
+              backendMessage: details.message ?? upload.backendMessage,
+              sourceIdentifier,
+              sourceType,
             }
           : upload,
       ),
@@ -682,8 +644,6 @@ export default function IngestionPage() {
       return;
     }
 
-    const sourceIdentifier = details.sourceIdentifier ?? normalized;
-    const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "s3") ?? "s3";
     const metadata: ExtractionContext["metadata"] = {
       name: normalized,
       size: 0,

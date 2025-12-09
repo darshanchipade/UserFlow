@@ -19,6 +19,7 @@ export function StageHero({
   return (
     <section className="border-b border-slate-200 bg-[#f7f9fb]">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
+        <PipelineTracker current={currentStep} />
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
             {eyebrow && (
@@ -35,7 +36,6 @@ export function StageHero({
             <div className="flex items-end justify-start lg:justify-end">{actionsSlot}</div>
           )}
         </div>
-        <PipelineTracker current={currentStep} />
       </div>
     </section>
   );

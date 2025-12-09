@@ -413,19 +413,18 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
       `element-${index}`;
     const title =
       pickFromSources(sources, [
+        "originalFieldName",
+        "original_field_name",
         "title",
         "label",
         "name",
         "field",
-        "originalFieldName",
-        "original_field_name",
         "section",
         "heading",
         "elementTitle",
         "element_title",
         "content_name",
-      ]) ??
-      `Element ${index + 1}`;
+      ]) ?? `Element ${index + 1}`;
     const path =
       pickFromSources(sources, [
         "path",
@@ -1290,7 +1289,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
                                 >
                                   <div className="flex flex-col flex-1">
                                     <p className="text-xs uppercase tracking-wide text-slate-400">
-                                      {element.title ?? "Enriched element"}
+                                      {element.title ?? `Element ${group.elements.indexOf(element) + 1}`}
                                     </p>
                                     <p className="truncate text-xs text-slate-500">
                                       {element.copy ?? element.summary ?? "No preview available."}

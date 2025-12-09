@@ -9,7 +9,6 @@ const STEPS: Array<{ id: StepId; label: string }> = [
   { id: "extraction", label: "Extraction" },
   { id: "cleansing", label: "Cleansing" },
   { id: "enrichment", label: "Data Enrichment" },
-  { id: "qa", label: "Content QA" },
 ];
 
 export function PipelineTracker({ current }: { current: StepId }) {

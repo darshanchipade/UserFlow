@@ -55,6 +55,9 @@ type ApiFeedback = {
   message?: string;
 };
 
+const UPLOAD_HISTORY_STORAGE_KEY = "content-lake.upload-history.v1";
+const MAX_UPLOAD_HISTORY = 25;
+
 const uploadTabs = [
   {
     id: "s3" as const,
@@ -186,6 +189,23 @@ const FeedbackPill = ({ feedback }: { feedback: ApiFeedback }) => {
   );
 };
 
+const sanitizeUploadHistory = (value: unknown): UploadItem[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is UploadItem => {
+      if (!entry || typeof entry !== "object") return false;
+      const record = entry as Partial<UploadItem>;
+      return (
+        typeof record.id === "string" &&
+        typeof record.name === "string" &&
+        typeof record.source === "string" &&
+        typeof record.status === "string" &&
+        typeof record.createdAt === "number"
+      );
+    })
+    .slice(0, MAX_UPLOAD_HISTORY);
+};
+
 export default function IngestionPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -199,6 +219,7 @@ export default function IngestionPage() {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [historyHydrated, setHistoryHydrated] = useState(false);
   const [extractFeedback, setExtractFeedback] = useState<ApiFeedback>({
     state: "idle",
   });
@@ -233,6 +254,34 @@ export default function IngestionPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem(UPLOAD_HISTORY_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const sanitized = sanitizeUploadHistory(parsed);
+        if (sanitized.length) {
+          setUploads(sanitized);
+        }
+      }
+    } catch {
+      // ignore hydration issues
+    } finally {
+      setHistoryHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!historyHydrated || typeof window === "undefined") return;
+    try {
+      const trimmed = uploads.slice(0, MAX_UPLOAD_HISTORY);
+      window.localStorage.setItem(UPLOAD_HISTORY_STORAGE_KEY, JSON.stringify(trimmed));
+    } catch {
+      // ignore persistence issues
+    }
+  }, [uploads, historyHydrated]);
 
   const seedPreviewTree = (label: string, payload: unknown): TreeNode[] => {
     const counter = { value: 0 };

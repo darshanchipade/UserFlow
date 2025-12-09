@@ -26,7 +26,7 @@ import {
 } from "@/lib/extraction-context";
 import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
 import { readClientSnapshot } from "@/lib/client/snapshot-store";
-import { PipelineTracker } from "@/components/PipelineTracker";
+import { StageHero } from "@/components/StageHero";
 import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
 const formatBytes = (bytes: number) => {
@@ -557,25 +557,15 @@ export default function ExtractionPage() {
     context.metadata.sourceIdentifier ?? context.metadata.source ?? "—";
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              Extraction
-            </p>
-            <h1 className="text-xl font-semibold text-slate-900">
-              Review structured content
-            </h1>
-          </div>
-          <div className="flex flex-1 flex-col items-start gap-3 md:flex-row md:items-center md:justify-end">
-            <PipelineTracker current="extraction" />
-            <FeedbackPill feedback={feedback} />
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#f7f9fb]">
+      <StageHero
+        title="Extraction"
+        description="Data extracted and converted to JSON format (Postgres/Neon)."
+        currentStep="extraction"
+        actionsSlot={<FeedbackPill feedback={feedback} />}
+      />
 
-      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
+      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between">

@@ -8,7 +8,7 @@ import {
   saveEnrichmentContext,
   type CleansedContext,
 } from "@/lib/extraction-context";
-import { PipelineTracker } from "@/components/PipelineTracker";
+import { StageHero } from "@/components/StageHero";
 import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
 const RULES = [
@@ -434,23 +434,15 @@ export default function CleansingPage() {
   const sourceIdentifier = context.metadata.sourceIdentifier ?? "—";
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-400">Cleansing</p>
-            <h1 className="text-xl font-semibold text-slate-900">
-              Review cleansed output ({context.metadata.name})
-            </h1>
-          </div>
-          <div className="flex flex-1 flex-col items-start gap-3 md:flex-row md:items-center md:justify-end">
-            <PipelineTracker current="cleansing" />
-            <FeedbackPill feedback={enrichmentFeedback} />
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#f7f9fb]">
+      <StageHero
+        title="Cleansing"
+        description={`Review cleansed output for ${context.metadata.name} before sending it forward.`}
+        currentStep="cleansing"
+        actionsSlot={<FeedbackPill feedback={enrichmentFeedback} />}
+      />
 
-      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
+      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10">
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>

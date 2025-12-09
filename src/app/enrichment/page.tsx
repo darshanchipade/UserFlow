@@ -1067,7 +1067,6 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       <StageHero
         title="Enrichment"
         description={`Monitor enrichment for ${context.metadata.name}`}
-        currentStep="enrichment"
         actionsSlot={
           statusFeedback.state !== "idle" ? (
             <div

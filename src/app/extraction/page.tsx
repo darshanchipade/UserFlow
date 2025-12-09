@@ -562,7 +562,6 @@ export default function ExtractionPage() {
       <StageHero
         title="Extraction"
         description="Data extracted and converted to JSON format (Postgres/Neon)."
-        currentStep="extraction"
         actionsSlot={<FeedbackPill feedback={feedback} />}
       />
 

@@ -439,7 +439,6 @@ export default function CleansingPage() {
       <StageHero
         title="Cleansing"
         description={`Review cleansed output for ${context.metadata.name} before sending it forward.`}
-        currentStep="cleansing"
         actionsSlot={<FeedbackPill feedback={enrichmentFeedback} />}
       />
 

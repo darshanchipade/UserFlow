@@ -12,7 +12,7 @@ import {
 import clsx from "clsx";
 import Link from "next/link";
 import type { ComponentType, ReactNode, SVGProps } from "react";
-import type { StepId } from "@/components/PipelineTracker";
+import { PipelineTracker, type StepId } from "@/components/PipelineTracker";
 
 type PipelineShellProps = {
   currentStep: StepId;
@@ -102,7 +102,14 @@ export function PipelineShell({ currentStep, children }: PipelineShellProps) {
           </div>
           <span>{currentStep}</span>
         </div>
-        {children}
+        <div className="relative">
+          <div className="sticky top-0 z-30 border-b border-slate-200 bg-[#f7f9fb]/90 backdrop-blur">
+            <div className="mx-auto max-w-6xl px-6 py-6">
+              <PipelineTracker current={currentStep} />
+            </div>
+          </div>
+          <div>{children}</div>
+        </div>
       </div>
     </div>
   );

@@ -872,7 +872,6 @@ export default function IngestionPage() {
       <StageHero
         title="Ingestion"
         description="Upload local JSON files, paste API payloads, or reference cloud storage to kick off the pipeline."
-        currentStep="ingestion"
       />
 
       <main className="mx-auto grid max-w-6xl gap-6 px-6 py-10 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">

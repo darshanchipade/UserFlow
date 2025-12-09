@@ -881,20 +881,6 @@ export default function IngestionPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-black text-lg font-semibold text-white">
               
             </div>
-            <div>
-              <p className="text-sm text-slate-500">Context</p>
-              <div className="mt-1 flex flex-wrap gap-2">
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  EN-US
-                </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  US
-                </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  product-detail
-                </span>
-              </div>
-            </div>
           </div>
           <nav className="flex flex-1 justify-end gap-2 text-sm font-medium text-slate-500">
             {steps.map((step, index) => (

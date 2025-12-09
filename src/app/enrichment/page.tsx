@@ -939,6 +939,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     return (derivedIndex / statuses.length) * 100;
   }, [currentStatus, statusHistory.length]);
 
+
   useEffect(() => {
     if (!groupedElements.length) {
       setExpandedGroups(new Set());

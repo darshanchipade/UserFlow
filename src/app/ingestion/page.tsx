@@ -183,6 +183,7 @@ export default function IngestionPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingLocalUploadIdRef = useRef<string | null>(null);
+  const pendingApiUploadIdRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<UploadTab>("local");
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [localFileText, setLocalFileText] = useState<string | null>(null);
@@ -330,6 +331,31 @@ export default function IngestionPage() {
       });
       setExtracting(false);
     }
+  };
+
+  const ensurePendingApiUpload = (size: number) => {
+    if (pendingApiUploadIdRef.current) {
+      setUploads((previous) =>
+        previous.map((upload) =>
+          upload.id === pendingApiUploadIdRef.current ? { ...upload, size } : upload,
+        ),
+      );
+      return;
+    }
+    const uploadId = crypto.randomUUID();
+    pendingApiUploadIdRef.current = uploadId;
+    setUploads((previous) => [
+      {
+        id: uploadId,
+        name: "API payload",
+        size,
+        type: "application/json",
+        source: "API",
+        status: "uploading",
+        createdAt: Date.now(),
+      },
+      ...previous,
+    ]);
   };
 
   const processLocalExtraction = async () => {
@@ -482,122 +508,134 @@ export default function IngestionPage() {
     }
 
     setApiFeedback({ state: "loading" });
-    const uploadId = crypto.randomUUID();
-    setUploads((previous) => [
-      {
-        id: uploadId,
-        name: "API payload",
-        size: apiPayload.length,
-        type: "application/json",
-        source: "API",
-        status: "uploading",
-        createdAt: Date.now(),
-      },
-      ...previous,
-    ]);
+    const existingUploadId = pendingApiUploadIdRef.current;
+    const uploadId = existingUploadId ?? crypto.randomUUID();
+    if (!existingUploadId) {
+      pendingApiUploadIdRef.current = uploadId;
+      setUploads((previous) => [
+        {
+          id: uploadId,
+          name: "API payload",
+          size: apiPayload.length,
+          type: "application/json",
+          source: "API",
+          status: "uploading",
+          createdAt: Date.now(),
+        },
+        ...previous,
+      ]);
+    } else {
+      setUploads((previous) =>
+        previous.map((upload) =>
+          upload.id === uploadId ? { ...upload, size: apiPayload.length } : upload,
+        ),
+      );
+    }
 
-    const response = await fetch("/api/ingestion/payload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payload: parsed }),
-    });
-    const payload = await response.json();
-    const details = parseBackendPayload(payload);
+    try {
+      const response = await fetch("/api/ingestion/payload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: parsed }),
+      });
+      const payload = await response.json();
+      const details = parseBackendPayload(payload);
     const fallbackIdentifier = details.cleansedId ?? `api-payload:${uploadId}`;
     const sourceIdentifier = details.sourceIdentifier ?? fallbackIdentifier;
     const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "api") ?? "api";
 
-    setUploads((previous) =>
-      previous.map((upload) =>
-        upload.id === uploadId
-          ? {
-              ...upload,
-              status: response.ok ? "success" : "error",
-              cleansedId: details.cleansedId ?? upload.cleansedId,
-              backendStatus: details.status ?? upload.backendStatus,
-              backendMessage: details.message ?? upload.backendMessage,
-              sourceIdentifier,
-              sourceType,
-            }
-          : upload,
-      ),
-    );
+      setUploads((previous) =>
+        previous.map((upload) =>
+          upload.id === uploadId
+            ? {
+                ...upload,
+                status: response.ok ? "success" : "error",
+                cleansedId: details.cleansedId ?? upload.cleansedId,
+                backendStatus: details.status ?? upload.backendStatus,
+                backendMessage: details.message ?? upload.backendMessage,
+                sourceIdentifier,
+                sourceType,
+              }
+            : upload,
+        ),
+      );
 
-    setApiFeedback({
-      state: response.ok ? "success" : "error",
-      message: response.ok
-        ? "Payload accepted."
-        : "Backend rejected the payload.",
-    });
-
-    if (!response.ok) {
-      setExtractFeedback({
-        state: "error",
-        message: details.message ?? "Backend rejected the payload.",
+      setApiFeedback({
+        state: response.ok ? "success" : "error",
+        message: response.ok ? "Payload accepted." : "Backend rejected the payload.",
       });
-      setExtracting(false);
-      return;
-    }
 
-    const previewNodes = seedPreviewTree("API payload", parsed);
+      if (!response.ok) {
+        setExtractFeedback({
+          state: "error",
+          message: details.message ?? "Backend rejected the payload.",
+        });
+        setExtracting(false);
+        return;
+      }
 
-    const metadata: ExtractionContext["metadata"] = {
-      name: "API payload",
-      size: apiPayload.length,
-      source: describeSourceLabel(sourceType, "API payload"),
-      cleansedId: details.cleansedId,
-      status: details.status,
-      uploadedAt: Date.now(),
-      sourceIdentifier,
-      sourceType,
-    };
-    const snapshotId = details.cleansedId ?? uploadId;
-    const serializedPayload = JSON.stringify(parsed, null, 2);
+      const previewNodes = seedPreviewTree("API payload", parsed);
 
-    let snapshotPersisted = false;
-    let resolvedSnapshotId: string | undefined;
-    if (snapshotId) {
-      const snapshotResult = await persistSnapshot(snapshotId, {
+      const metadata: ExtractionContext["metadata"] = {
+        name: "API payload",
+        size: apiPayload.length,
+        source: describeSourceLabel(sourceType, "API payload"),
+        cleansedId: details.cleansedId,
+        status: details.status,
+        uploadedAt: Date.now(),
+        sourceIdentifier,
+        sourceType,
+      };
+      const snapshotId = details.cleansedId ?? uploadId;
+      const serializedPayload = JSON.stringify(parsed, null, 2);
+
+      let snapshotPersisted = false;
+      let resolvedSnapshotId: string | undefined;
+      if (snapshotId) {
+        const snapshotResult = await persistSnapshot(snapshotId, {
+          mode: "api",
+          metadata,
+          rawJson: serializedPayload,
+          tree: previewNodes,
+          backendPayload: payload,
+        });
+        snapshotPersisted = snapshotResult.ok;
+        resolvedSnapshotId = snapshotResult.snapshotId;
+        if (!snapshotResult.ok) {
+          console.warn(
+            "Unable to cache API extraction snapshot, falling back to browser session storage.",
+            snapshotResult.message,
+          );
+        }
+      }
+
+      const persistenceResult = saveExtractionContext({
         mode: "api",
         metadata,
-        rawJson: serializedPayload,
-        tree: previewNodes,
-        backendPayload: payload,
+        snapshotId: snapshotPersisted ? resolvedSnapshotId ?? snapshotId : undefined,
+        tree: snapshotPersisted ? undefined : previewNodes,
+        rawJson: snapshotPersisted ? undefined : serializedPayload,
+        backendPayload: snapshotPersisted ? undefined : payload,
       });
-      snapshotPersisted = snapshotResult.ok;
-      resolvedSnapshotId = snapshotResult.snapshotId;
-      if (!snapshotResult.ok) {
-        console.warn(
-          "Unable to cache API extraction snapshot, falling back to browser session storage.",
-          snapshotResult.message,
-        );
+
+      if (!persistenceResult.ok) {
+        setExtractFeedback({
+          state: "error",
+          message: describeExtractionPersistenceError(persistenceResult),
+        });
+        setExtracting(false);
+        return;
       }
-    }
 
-    const persistenceResult = saveExtractionContext({
-      mode: "api",
-      metadata,
-      snapshotId: snapshotPersisted ? resolvedSnapshotId ?? snapshotId : undefined,
-      tree: snapshotPersisted ? undefined : previewNodes,
-      rawJson: snapshotPersisted ? undefined : serializedPayload,
-      backendPayload: snapshotPersisted ? undefined : payload,
-    });
-
-    if (!persistenceResult.ok) {
       setExtractFeedback({
-        state: "error",
-        message: describeExtractionPersistenceError(persistenceResult),
+        state: "success",
+        message: "Extraction ready. Redirecting...",
       });
       setExtracting(false);
-      return;
+      router.push("/extraction");
+    } finally {
+      pendingApiUploadIdRef.current = null;
     }
-
-    setExtractFeedback({
-      state: "success",
-      message: "Extraction ready. Redirecting...",
-    });
-    setExtracting(false);
-    router.push("/extraction");
   };
 
   const processS3Extraction = async () => {
@@ -1072,6 +1110,7 @@ export default function IngestionPage() {
                     if (parsed) {
                       seedPreviewTree("API payload", parsed);
                       setApiFeedback({ state: "idle" });
+                      ensurePendingApiUpload(event.target.value.length);
                     }
                   }}
                   rows={6}

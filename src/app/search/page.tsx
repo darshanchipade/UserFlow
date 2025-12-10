@@ -195,8 +195,8 @@ export default function SearchPage() {
             <a href="/ingestion" className="hover:underline">
               Upload JSON
             </a>
-            <a href="/enrichment" className="hover:underline">
-              View Pipeline
+            <a href="/chatbot" className="hover:underline">
+              Open Chatbot
             </a>
           </div>
 

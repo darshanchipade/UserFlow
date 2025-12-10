@@ -182,6 +182,7 @@ const FeedbackPill = ({ feedback }: { feedback: ApiFeedback }) => {
 export default function IngestionPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingLocalUploadIdRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<UploadTab>("local");
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [localFileText, setLocalFileText] = useState<string | null>(null);
@@ -271,6 +272,21 @@ export default function IngestionPage() {
     setLocalFile(file);
     setExtractFeedback({ state: "idle" });
 
+     const uploadId = crypto.randomUUID();
+     pendingLocalUploadIdRef.current = uploadId;
+     setUploads((previous) => [
+       {
+         id: uploadId,
+         name: file.name,
+         size: file.size,
+         type: file.type || file.name.split(".").pop() || "file",
+         source: "Local",
+         status: "uploading",
+         createdAt: Date.now(),
+       },
+       ...previous,
+     ]);
+
     if (file.name.toLowerCase().endsWith(".json")) {
       const text = await file.text();
       setLocalFileText(text);
@@ -317,6 +333,9 @@ export default function IngestionPage() {
   };
 
   const processLocalExtraction = async () => {
+    const existingUploadId = pendingLocalUploadIdRef.current;
+    const uploadId = existingUploadId ?? crypto.randomUUID();
+
     if (!localFile) {
       setExtractFeedback({
         state: "error",
@@ -326,114 +345,120 @@ export default function IngestionPage() {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", localFile);
+    if (!existingUploadId) {
+      pendingLocalUploadIdRef.current = uploadId;
+      setUploads((previous) => [
+        {
+          id: uploadId,
+          name: localFile.name,
+          size: localFile.size,
+          type: localFile.type || localFile.name.split(".").pop() || "file",
+          source: "Local",
+          status: "uploading",
+          createdAt: Date.now(),
+        },
+        ...previous,
+      ]);
+    }
 
-    const uploadId = crypto.randomUUID();
-    setUploads((previous) => [
-      {
-        id: uploadId,
-        name: localFile.name,
-        size: localFile.size,
-        type: localFile.type || localFile.name.split(".").pop() || "file",
-        source: "Local",
-        status: "uploading",
-        createdAt: Date.now(),
-      },
-      ...previous,
-    ]);
+    try {
+      const formData = new FormData();
+      formData.append("file", localFile);
 
-    const response = await fetch("/api/ingestion/upload", {
-      method: "POST",
-      body: formData,
-    });
-    const payload = await response.json();
-    const details = parseBackendPayload(payload);
+      const response = await fetch("/api/ingestion/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json();
+      const details = parseBackendPayload(payload);
     const fallbackIdentifier = `file-upload:${localFile.name}`;
     const sourceIdentifier = details.sourceIdentifier ?? fallbackIdentifier;
     const sourceType = inferSourceType(details.sourceType, sourceIdentifier, "file") ?? "file";
 
-    setUploads((previous) =>
-      previous.map((item) =>
-        item.id === uploadId
-          ? {
-              ...item,
-              status: response.ok ? "success" : "error",
-              cleansedId: details.cleansedId ?? item.cleansedId,
-              backendStatus: details.status ?? item.backendStatus,
-              backendMessage: details.message ?? item.backendMessage,
-              sourceIdentifier,
-              sourceType,
-            }
-          : item,
-      ),
-    );
+      setUploads((previous) =>
+        previous.map((item) =>
+          item.id === uploadId
+            ? {
+                ...item,
+                status: response.ok ? "success" : "error",
+                cleansedId: details.cleansedId ?? item.cleansedId,
+                backendStatus: details.status ?? item.backendStatus,
+                backendMessage: details.message ?? item.backendMessage,
+                sourceIdentifier,
+                sourceType,
+              }
+            : item,
+        ),
+      );
 
-    if (!response.ok) {
-      setExtractFeedback({
-        state: "error",
-        message: details.message ?? "Backend rejected the upload.",
-      });
-      setExtracting(false);
-      return;
-    }
+      if (!response.ok) {
+        setExtractFeedback({
+          state: "error",
+          message: details.message ?? "Backend rejected the upload.",
+        });
+        setExtracting(false);
+        return;
+      }
 
-    const metadata: ExtractionContext["metadata"] = {
-      name: localFile.name,
-      size: localFile.size,
-      source: describeSourceLabel(sourceType, "Local upload"),
-      cleansedId: details.cleansedId,
-      status: details.status,
-      uploadedAt: Date.now(),
-      sourceIdentifier,
-      sourceType,
-    };
-    const snapshotId = details.cleansedId ?? uploadId;
-    let snapshotPersisted = false;
-    let resolvedSnapshotId: string | undefined;
+      const metadata: ExtractionContext["metadata"] = {
+        name: localFile.name,
+        size: localFile.size,
+        source: describeSourceLabel(sourceType, "Local upload"),
+        cleansedId: details.cleansedId,
+        status: details.status,
+        uploadedAt: Date.now(),
+        sourceIdentifier,
+        sourceType,
+      };
+      const snapshotId = details.cleansedId ?? uploadId;
+      let snapshotPersisted = false;
+      let resolvedSnapshotId: string | undefined;
 
-    if (snapshotId) {
-      const result = await persistSnapshot(snapshotId, {
+      if (snapshotId) {
+        const result = await persistSnapshot(snapshotId, {
+          mode: "local",
+          metadata,
+          rawJson: localFileText ?? undefined,
+          tree: treeNodes,
+          backendPayload: payload,
+        });
+        snapshotPersisted = result.ok;
+        resolvedSnapshotId = result.snapshotId;
+        if (!result.ok) {
+          console.warn(
+            "Unable to cache extraction snapshot, falling back to session storage.",
+            result.message,
+          );
+        }
+      }
+
+      const persistenceResult = saveExtractionContext({
         mode: "local",
         metadata,
-        rawJson: localFileText ?? undefined,
-        tree: treeNodes,
-        backendPayload: payload,
+        snapshotId: snapshotPersisted ? resolvedSnapshotId ?? snapshotId : undefined,
+        tree: snapshotPersisted ? undefined : treeNodes,
+        rawJson: snapshotPersisted ? undefined : localFileText ?? undefined,
+        backendPayload: snapshotPersisted ? undefined : payload,
       });
-      snapshotPersisted = result.ok;
-      resolvedSnapshotId = result.snapshotId;
-      if (!result.ok) {
-        console.warn(
-          "Unable to cache extraction snapshot, falling back to session storage.",
-          result.message,
-        );
+
+      if (!persistenceResult.ok) {
+        setExtractFeedback({
+          state: "error",
+          message: describeExtractionPersistenceError(persistenceResult),
+        });
+        setExtracting(false);
+        return;
       }
-    }
 
-    const persistenceResult = saveExtractionContext({
-      mode: "local",
-      metadata,
-      snapshotId: snapshotPersisted ? resolvedSnapshotId ?? snapshotId : undefined,
-      tree: snapshotPersisted ? undefined : treeNodes,
-      rawJson: snapshotPersisted ? undefined : localFileText ?? undefined,
-      backendPayload: snapshotPersisted ? undefined : payload,
-    });
-
-    if (!persistenceResult.ok) {
       setExtractFeedback({
-        state: "error",
-        message: describeExtractionPersistenceError(persistenceResult),
+        state: "success",
+        message: "Extraction ready. Redirecting...",
       });
       setExtracting(false);
-      return;
+      router.push("/extraction");
+    } finally {
+      pendingLocalUploadIdRef.current = null;
     }
-
-    setExtractFeedback({
-      state: "success",
-      message: "Extraction ready. Redirecting...",
-    });
-    setExtracting(false);
-    router.push("/extraction");
   };
 
   const processApiExtraction = async () => {

@@ -1,9 +1,9 @@
 import {
   ArrowPathRoundedSquareIcon,
   ArrowTrendingUpIcon,
-  BoltIcon,
   CloudArrowUpIcon,
   HomeModernIcon,
+  MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import Link from "next/link";
@@ -19,7 +19,7 @@ const workspaceLinks = [
   { label: "Workspace Overview", href: "/ingestion", icon: HomeModernIcon },
   { label: "Upload Activity", href: "/ingestion/activity", icon: CloudArrowUpIcon },
   { label: "Pipeline Health", href: "/extraction", icon: ArrowTrendingUpIcon },
-  { label: "Automation", href: "/cleansing", icon: BoltIcon },
+  { label: "Search Finder", href: "/search", icon: MagnifyingGlassIcon },
 ];
 
 export function PipelineShell({ currentStep, children }: PipelineShellProps) {

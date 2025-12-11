@@ -1441,8 +1441,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
                   clearEnrichmentContext();
                   router.push("/ingestion");
                 }}
-                className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
-              >
+                className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white">
                 Finish Session
               </button>
             </div>

@@ -64,24 +64,25 @@ const mapLocalContext = (local: CleansedContext | null): RemoteCleansedContext |
 
 const normalizeStoredItems = (items?: unknown[]): PreviewRow[] => {
   if (!Array.isArray(items)) return [];
-  return items
-    .map((item, index) => {
-      if (!item || typeof item !== "object") return null;
-      const record = item as Record<string, unknown>;
-      const field = pickString(record.field);
-      const original = pickString(record.original);
-      const cleansed = pickString(record.cleansed);
-      if (!field && !original && !cleansed) {
-        return null;
-      }
-      return {
-        id: pickString(record.id) ?? `cached-${index}`,
-        field: field ?? `Item ${index + 1}`,
-        original: original ?? null,
-        cleansed: cleansed ?? null,
-      };
-    })
-    .filter((row): row is PreviewRow => Boolean(row));
+  return items.reduce<PreviewRow[]>((rows, item, index) => {
+    if (!item || typeof item !== "object") {
+      return rows;
+    }
+    const record = item as Record<string, unknown>;
+    const field = pickString(record.field);
+    const original = pickString(record.original);
+    const cleansed = pickString(record.cleansed);
+    if (!field && !original && !cleansed) {
+      return rows;
+    }
+    rows.push({
+      id: pickString(record.id) ?? `cached-${index}`,
+      field: field ?? `Item ${index + 1}`,
+      original: original ?? null,
+      cleansed: cleansed ?? null,
+    });
+    return rows;
+  }, []);
 };
 
 const parseJson = async (response: Response) => {

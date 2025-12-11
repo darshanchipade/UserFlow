@@ -892,7 +892,7 @@ export default function IngestionPage() {
     setUploads((previous) => previous.filter((upload) => upload.id !== uploadId));
   };
 
-  const handleDownloadUpload = async (upload: UploadItem) => {
+  const handleDownloadUpload = async (upload: UploadHistoryItem) => {
     if (!upload.cleansedId) {
       window.alert("Download is available after the backend returns a cleansed ID.");
       return;

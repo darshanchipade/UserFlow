@@ -11,21 +11,21 @@ export type SearchFilter = {
   isActive: boolean;
 };
 
-type SearchInterfaceProps = {
+type SearchInterfaceProps<TFilter extends SearchFilter = SearchFilter> = {
   searchQuery: string;
   setSearchQuery: Dispatch<SetStateAction<string>>;
   handleSearch: () => void;
-  filters: SearchFilter[];
-  toggleFilter: (filter: SearchFilter) => void;
+  filters: TFilter[];
+  toggleFilter: (filter: TFilter) => void;
 };
 
-export function SearchInterface({
+export function SearchInterface<TFilter extends SearchFilter>({
   searchQuery,
   setSearchQuery,
   handleSearch,
   filters,
   toggleFilter,
-}: SearchInterfaceProps) {
+}: SearchInterfaceProps<TFilter>) {
   const clearSearch = () => setSearchQuery("");
 
   const onFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {

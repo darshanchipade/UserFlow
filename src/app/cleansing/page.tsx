@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   clearCleansedContext,
@@ -64,24 +64,25 @@ const mapLocalContext = (local: CleansedContext | null): RemoteCleansedContext |
 
 const normalizeStoredItems = (items?: unknown[]): PreviewRow[] => {
   if (!Array.isArray(items)) return [];
-  return items
-    .map((item, index) => {
-      if (!item || typeof item !== "object") return null;
-      const record = item as Record<string, unknown>;
-      const field = pickString(record.field);
-      const original = pickString(record.original);
-      const cleansed = pickString(record.cleansed);
-      if (!field && !original && !cleansed) {
-        return null;
-      }
-      return {
-        id: pickString(record.id) ?? `cached-${index}`,
-        field: field ?? `Item ${index + 1}`,
-        original: original ?? null,
-        cleansed: cleansed ?? null,
-      };
-    })
-    .filter((row): row is PreviewRow => Boolean(row));
+  return items.reduce<PreviewRow[]>((rows, item, index) => {
+    if (!item || typeof item !== "object") {
+      return rows;
+    }
+    const record = item as Record<string, unknown>;
+    const field = pickString(record.field);
+    const original = pickString(record.original);
+    const cleansed = pickString(record.cleansed);
+    if (!field && !original && !cleansed) {
+      return rows;
+    }
+    rows.push({
+      id: pickString(record.id) ?? `cached-${index}`,
+      field: field ?? `Item ${index + 1}`,
+      original: original ?? null,
+      cleansed: cleansed ?? null,
+    });
+    return rows;
+  }, []);
 };
 
 const parseJson = async (response: Response) => {
@@ -197,7 +198,7 @@ const FeedbackPill = ({ feedback }: { feedback: Feedback }) => {
   );
 };
 
-export default function CleansingPage() {
+function CleansingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryId = searchParams.get("id");
@@ -615,5 +616,23 @@ export default function CleansingPage() {
         </section>
       </main>
     </PipelineShell>
+  );
+}
+
+export default function CleansingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-20">
+          <div className="max-w-xl rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-slate-400">Cleansing</p>
+            <h1 className="mt-2 text-2xl font-semibold text-slate-900">Loading cleansing run…</h1>
+            <p className="mt-4 text-sm text-slate-500">Fetching the latest cleansing context.</p>
+          </div>
+        </div>
+      }
+    >
+      <CleansingPageContent />
+    </Suspense>
   );
 }

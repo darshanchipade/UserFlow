@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   clearEnrichmentContext,
   loadEnrichmentContext,
+  saveEnrichmentContext,
   type EnrichmentContext,
 } from "@/lib/extraction-context";
 import { PipelineShell } from "@/components/PipelineShell";
@@ -756,7 +757,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
       ? (backendRecord?.["statusHistory"] as { status: string; timestamp: number }[])
       : null;
 
-    return {
+    const remoteContext: RemoteEnrichmentContext = {
       metadata: mergedMetadata,
       startedAt:
         pickNumber(backendRecord?.startedAt) ??
@@ -764,6 +765,10 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
         Date.now(),
       statusHistory: backendHistory && backendHistory.length ? backendHistory : FALLBACK_HISTORY,
     };
+
+    saveEnrichmentContext(remoteContext);
+
+    return remoteContext;
   };
 
   const loadContext = async (

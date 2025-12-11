@@ -94,30 +94,29 @@ const normalizeItems = (payload: unknown): NormalizedRow[] => {
     "cleansedCopy",
   ];
 
-  return extractRawItems()
-    .map((item, index) => {
-      if (!isRecord(item)) return null;
-      const context = isRecord(item.context) ? item.context : undefined;
-      const facets = context && isRecord(context.facets) ? (context.facets as Record<string, unknown>) : undefined;
+  return extractRawItems().reduce<NormalizedRow[]>((rows, item, index) => {
+    if (!isRecord(item)) {
+      return rows;
+    }
+    const context = isRecord(item.context) ? item.context : undefined;
+    const facets = context && isRecord(context.facets) ? (context.facets as Record<string, unknown>) : undefined;
 
-      const sources: Array<Record<string, unknown>> = [item];
-      if (context) sources.push(context);
-      if (facets) sources.push(facets);
+    const sources: Array<Record<string, unknown>> = [item];
+    if (context) sources.push(context);
+    if (facets) sources.push(facets);
 
-      const field =
-        pickFromSources(sources, FIELD_KEYS) ??
-        `Item ${index + 1}`;
-      const original = pickFromSources(sources, ORIGINAL_KEYS, field ? [field] : undefined);
-      const cleansed = pickFromSources(sources, CLEANSED_KEYS, field ? [field] : undefined);
+    const field = pickFromSources(sources, FIELD_KEYS) ?? `Item ${index + 1}`;
+    const original = pickFromSources(sources, ORIGINAL_KEYS, field ? [field] : undefined) ?? null;
+    const cleansed = pickFromSources(sources, CLEANSED_KEYS, field ? [field] : undefined) ?? null;
 
-      return {
-        id: pickString(item.id) ?? pickString(item.contentHash) ?? `row-${index}`,
-        field,
-        original: original ?? null,
-        cleansed: cleansed ?? null,
-      };
-    })
-    .filter((row): row is NormalizedRow => Boolean(row));
+    rows.push({
+      id: pickString(item.id) ?? pickString(item.contentHash) ?? `row-${index}`,
+      field,
+      original,
+      cleansed,
+    });
+    return rows;
+  }, []);
 };
 
 export async function GET(request: NextRequest) {

@@ -1,5 +1,6 @@
 'use client';
 
+import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 import { useEffect, useRef, useState } from "react";
 import { PipelineShell } from "@/components/PipelineShell";
 import { StageHero } from "@/components/StageHero";
@@ -13,15 +14,46 @@ function MessageBubble({ role, content }: ChatMessage) {
   const isUser = role === "user";
   const isJson = typeof content !== "string";
 
+  const downloadJson = () => {
+    if (!isJson || typeof window === "undefined") return;
+    try {
+      const serialized = JSON.stringify(content, null, 2);
+      const blob = new Blob([serialized], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `chatbot-result-${Date.now()}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      // ignore download errors
+    }
+  };
+
   return (
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
       <div
         className={`${isUser ? "bg-blue-600 text-white" : "bg-white text-[#111215]"} max-w-[80%] rounded-2xl px-4 py-3 shadow`}
       >
         {isJson ? (
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-sm">
-            {JSON.stringify(content, null, 2)}
-          </pre>
+          <>
+            <div className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-500">
+              <span>JSON result</span>
+              <button
+                type="button"
+                onClick={downloadJson}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[0.7rem] text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+              >
+                <ArrowDownTrayIcon className="size-4 text-slate-900" />
+                Download
+              </button>
+            </div>
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-sm">
+              {JSON.stringify(content, null, 2)}
+            </pre>
+          </>
         ) : (
           <div className="whitespace-pre-wrap break-words text-sm">{content}</div>
         )}
@@ -90,7 +122,7 @@ export default function ChatbotPage() {
   };
 
   return (
-    <PipelineShell currentStep="ingestion">
+    <PipelineShell currentStep="ingestion" showPipelineTracker={false}>
       <StageHero
         title="Chatbot"
         description="Ask natural-language questions about your content. Responses stream from the Spring Boot ChatBotController."

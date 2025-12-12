@@ -13,6 +13,7 @@ import { PipelineTracker, type StepId } from "@/components/PipelineTracker";
 type PipelineShellProps = {
   currentStep: StepId;
   children: ReactNode;
+  showPipelineTracker?: boolean;
 };
 
 const workspaceLinks = [
@@ -22,7 +23,11 @@ const workspaceLinks = [
   { label: "Search Finder", href: "/search", icon: MagnifyingGlassIcon },
 ];
 
-export function PipelineShell({ currentStep, children }: PipelineShellProps) {
+export function PipelineShell({
+  currentStep,
+  children,
+  showPipelineTracker = true,
+}: PipelineShellProps) {
   return (
     <div className="flex min-h-screen bg-[#f7f9fb] text-slate-900">
       <aside className="sticky top-0 hidden h-screen w-72 flex-col border-r border-slate-200 bg-white/90 px-6 py-8 shadow-[20px_0_45px_rgba(15,23,42,0.06)] backdrop-blur lg:flex">
@@ -69,21 +74,29 @@ export function PipelineShell({ currentStep, children }: PipelineShellProps) {
       </aside>
 
       <div className="flex-1">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-4 text-sm font-semibold text-slate-900 shadow-sm lg:hidden">
-          <div className="flex items-center gap-2">
-            <span>Content Lake</span>
-            <span className="text-[0.65rem] uppercase tracking-[0.35em] text-slate-400">· Workflow</span>
-          </div>
-          <span>{currentStep}</span>
-        </div>
-        <div className="relative">
-          <div className="sticky top-0 z-30 border-b border-slate-200 bg-[#f7f9fb]/90 backdrop-blur">
-            <div className="mx-auto max-w-6xl px-6 py-6">
-              <PipelineTracker current={currentStep} />
+        {showPipelineTracker ? (
+          <div className="relative">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-4 text-sm font-semibold text-slate-900 shadow-sm lg:hidden">
+              <div className="flex items-center gap-2">
+                <span>Content Lake</span>
+                <span className="text-[0.65rem] uppercase tracking-[0.35em] text-slate-400">
+                  · Workflow
+                </span>
+              </div>
+              <span>{currentStep}</span>
+            </div>
+            <div className="relative">
+              <div className="sticky top-0 z-30 border-b border-slate-200 bg-[#f7f9fb]/90 backdrop-blur">
+                <div className="mx-auto max-w-6xl px-6 py-6">
+                  <PipelineTracker current={currentStep} />
+                </div>
+              </div>
+              <div>{children}</div>
             </div>
           </div>
-          <div>{children}</div>
-        </div>
+        ) : (
+          <div className="relative">{children}</div>
+        )}
       </div>
     </div>
   );

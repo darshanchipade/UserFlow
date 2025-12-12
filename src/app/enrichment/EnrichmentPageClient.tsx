@@ -1412,7 +1412,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
           ) : (
             <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-500">
               Awaiting enrichment results. Once the backend finishes generating AI insights, they’ll
-              appear here automatically. Use the “Refresh status” button above to check for status updates.
+              appear here automatically. Use the “Refresh status” button above to check for the status updates.
             </div>
           )}
         </section>

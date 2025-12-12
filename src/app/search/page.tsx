@@ -186,7 +186,6 @@ export default function SearchPage() {
     <PipelineShell currentStep="ingestion" showPipelineTracker={false}>
       <StageHero
         title="Search Finder"
-        description="Explore Content Lake with AI-powered refinements fed by the Spring Boot search controller."
       />
 
       <main className="mx-auto max-w-5xl px-6 py-10">

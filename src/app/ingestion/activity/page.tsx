@@ -281,7 +281,7 @@ export default function UploadActivityPage() {
                 </div>
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-slate-400">Backend status</dt>
-                  <dd className="text-sm font-semibold text-slate-900">
+                  <dd className="text-sm font-semibold text-slate-900 break-all">
                     {activeUpload.backendStatus ?? "—"}
                   </dd>
                 </div>

@@ -40,6 +40,7 @@ type EnrichedElement = {
   path?: string;
   copy?: string;
   summary?: string;
+  status?: string | null;
   classification: string[];
   keywords: string[];
   tags: string[];
@@ -506,6 +507,22 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
       "readability_gain",
     ]);
     const elementErrors = pickNumberFromSources(sources, ["errorsFound", "errorCount", "errors"]);
+    const elementStatus =
+      pickFromSources(sources, [
+        "status",
+        "resultStatus",
+        "result_status",
+        "processingStatus",
+        "processing_status",
+        "elementStatus",
+        "element_status",
+        "enrichmentStatus",
+        "enrichment_status",
+        "action",
+        "actionTaken",
+        "resolution",
+        "outcome",
+      ]) ?? null;
 
     return {
       id,
@@ -513,6 +530,7 @@ const normalizeEnrichmentResult = (payload: unknown): EnrichmentOverview => {
       path: path ?? undefined,
       copy,
       summary: summaryValue,
+      status: elementStatus,
       classification,
       keywords,
       tags,
@@ -588,6 +606,28 @@ const shouldHideElement = (element: EnrichedElement): boolean => {
       normalizedTitle.includes(`${excluded}:`)
     );
   });
+};
+
+const SKIPPED_STATUS_KEYWORDS = [
+  "SKIP",
+  "SKIPPED",
+  "IGNORED",
+  "IGNORE",
+  "NO_ENRICHMENT",
+  "NOT_ENRICHED",
+  "UNSUPPORTED",
+  "EXCLUDED",
+  "FILTERED",
+];
+
+const isSkippedStatus = (status?: string | null): boolean => {
+  const normalized = status?.toUpperCase().replace(/[\s-]+/g, "_") ?? "";
+  if (!normalized) return false;
+  return SKIPPED_STATUS_KEYWORDS.some((keyword) => normalized.includes(keyword));
+};
+
+const isSkippedElement = (element: EnrichedElement): boolean => {
+  return isSkippedStatus(element.status);
 };
 
 const FALLBACK_HISTORY: EnrichmentContext["statusHistory"] = [
@@ -852,9 +892,16 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
     }
   };
 
+  const skippedElementsCount = useMemo(() => {
+    if (!enrichmentResult?.elements.length) return 0;
+    return enrichmentResult.elements.filter((element) => isSkippedElement(element)).length;
+  }, [enrichmentResult?.elements]);
+
   const filteredElements = useMemo(() => {
     if (!enrichmentResult?.elements.length) return [];
-    return enrichmentResult.elements.filter((element) => !shouldHideElement(element));
+    return enrichmentResult.elements.filter(
+      (element) => !shouldHideElement(element) && !isSkippedElement(element),
+    );
   }, [enrichmentResult?.elements]);
 
   const groupedElements = useMemo(() => {
@@ -967,9 +1014,24 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
   }, [groupedElements, filteredElements]);
 
   const metrics = enrichmentResult?.metrics ?? {};
-  const totalFieldsTagged =
+  const backendTotalFieldsTagged =
     metrics.totalFieldsTagged !== null && metrics.totalFieldsTagged !== undefined
       ? Math.round(metrics.totalFieldsTagged)
+      : null;
+  const totalElementsCount = enrichmentResult ? enrichmentResult.elements.length : null;
+  const enrichedElementsCount =
+    totalElementsCount !== null ? Math.max(0, totalElementsCount - skippedElementsCount) : null;
+  const derivedTotalFieldsTagged =
+    totalElementsCount !== null && enrichedElementsCount !== null
+      ? enrichedElementsCount + skippedElementsCount
+      : null;
+  const totalFieldsTagged =
+    derivedTotalFieldsTagged !== null ? derivedTotalFieldsTagged : backendTotalFieldsTagged;
+  const totalFieldsBreakdown =
+    derivedTotalFieldsTagged !== null && enrichedElementsCount !== null
+      ? `${enrichedElementsCount} enriched${
+          skippedElementsCount ? ` · ${skippedElementsCount} skipped` : ""
+        }`
       : null;
   const readabilityDelta =
     metrics.readabilityDelta !== null && metrics.readabilityDelta !== undefined
@@ -1135,6 +1197,9 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
               <p className="mt-2 text-2xl font-semibold text-slate-900">
                 {totalFieldsTagged ?? "—"}
               </p>
+              {totalFieldsBreakdown ? (
+                <p className="text-xs text-slate-500">{totalFieldsBreakdown}</p>
+              ) : null}
             </div>
             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
               <p className="text-xs uppercase tracking-wide text-slate-400">Readability improved</p>
@@ -1412,7 +1477,7 @@ const fetchRemoteStatus = async (id: string): Promise<RemoteEnrichmentContext> =
           ) : (
             <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-500">
               Awaiting enrichment results. Once the backend finishes generating AI insights, they’ll
-              appear here automatically. Use the “Refresh status” button above to check for the status updates.
+              appear here automatically. Use the “Refresh status” button above to check for updates.
             </div>
           )}
         </section>

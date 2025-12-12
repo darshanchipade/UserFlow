@@ -90,7 +90,7 @@ export default function ChatbotPage() {
   };
 
   return (
-    <PipelineShell currentStep="ingestion">
+    <PipelineShell currentStep="ingestion" showPipelineTracker={false}>
       <StageHero
         title="Chatbot"
         description="Ask natural-language questions about your content. Responses stream from the Spring Boot ChatBotController."

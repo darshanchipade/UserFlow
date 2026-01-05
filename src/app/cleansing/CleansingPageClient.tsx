@@ -227,6 +227,7 @@ export default function CleansingPageClient() {
     const { showSpinner = true } = options;
     if (showSpinner) {
       setItemsLoading(true);
+      setItems([]);
     }
     setItemsError(null);
     try {

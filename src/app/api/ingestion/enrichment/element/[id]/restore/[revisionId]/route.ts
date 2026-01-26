@@ -12,7 +12,7 @@ const safeParse = (payload: string) => {
 
 export async function POST(
   request: NextRequest,
-  context: { params: { id?: string; revisionId?: string } },
+  context: { params: Promise<{ id: string; revisionId: string }> },
 ) {
   if (!backendBaseUrl) {
     return NextResponse.json(
@@ -20,8 +20,7 @@ export async function POST(
       { status: 500 },
     );
   }
-  const id = context.params.id;
-  const revisionId = context.params.revisionId;
+  const { id, revisionId } = await context.params;
   if (!id || !revisionId) {
     return NextResponse.json(
       { error: "Missing enriched content element id or revision id." },

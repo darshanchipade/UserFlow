@@ -33,7 +33,7 @@ const forward = async (request: NextRequest, targetUrl: URL, method: "PUT" | "PO
 
 export async function PUT(
   request: NextRequest,
-  context: { params: { id?: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   if (!backendBaseUrl) {
     return NextResponse.json(
@@ -41,7 +41,7 @@ export async function PUT(
       { status: 500 },
     );
   }
-  const id = context.params.id;
+  const { id } = await context.params;
   if (!id) {
     return NextResponse.json(
       { error: "Missing enriched content element id." },
@@ -50,7 +50,7 @@ export async function PUT(
   }
 
   try {
-    const targetUrl = new URL('/api/enrichment/content/${id}', backendBaseUrl);
+    const targetUrl = new URL(`/api/enrichment/content/${id}`, backendBaseUrl);
     return await forward(request, targetUrl, "PUT");
   } catch (error) {
     return NextResponse.json(
@@ -67,7 +67,7 @@ export async function PUT(
 
 export async function POST(
   request: NextRequest,
-  context: { params: { id?: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   if (!backendBaseUrl) {
     return NextResponse.json(
@@ -75,7 +75,7 @@ export async function POST(
       { status: 500 },
     );
   }
-  const id = context.params.id;
+  const { id } = await context.params;
   if (!id) {
     return NextResponse.json(
       { error: "Missing enriched content element id." },
@@ -84,7 +84,7 @@ export async function POST(
   }
 
   try {
-    const targetUrl = new URL('/api/enrichment/content/${id}/generate', backendBaseUrl);
+    const targetUrl = new URL(`/api/enrichment/content/${id}/generate`, backendBaseUrl);
     return await forward(request, targetUrl, "POST");
   } catch (error) {
     return NextResponse.json(

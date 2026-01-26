@@ -12,7 +12,7 @@ const safeParse = (payload: string) => {
 
 export async function GET(
   request: NextRequest,
-  context: { params: { id?: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   if (!backendBaseUrl) {
     return NextResponse.json(
@@ -20,7 +20,7 @@ export async function GET(
       { status: 500 },
     );
   }
-  const id = context.params.id;
+  const { id } = await context.params;
   if (!id) {
     return NextResponse.json(
       { error: "Missing enriched content element id." },
@@ -29,7 +29,7 @@ export async function GET(
   }
 
   try {
-    const targetUrl = new URL('/api/enrichment/content/${id}/revisions', backendBaseUrl);
+    const targetUrl = new URL(`/api/enrichment/content/${id}/revisions`, backendBaseUrl);
     const upstream = await fetch(targetUrl);
     const rawBody = await upstream.text();
     const body = safeParse(rawBody);

@@ -273,7 +273,7 @@ export default function IngestionPage() {
     setLocalFile(file);
     setExtractFeedback({ state: "idle" });
 
-     const uploadId = window.crypto.randomUUID();
+     const uploadId = crypto.randomUUID();
      pendingLocalUploadIdRef.current = uploadId;
      setUploads((previous) => [
        {
@@ -342,7 +342,7 @@ export default function IngestionPage() {
       );
       return;
     }
-    const uploadId = window.crypto.randomUUID();
+    const uploadId = crypto.randomUUID();
     pendingApiUploadIdRef.current = uploadId;
     setUploads((previous) => [
       {
@@ -360,7 +360,7 @@ export default function IngestionPage() {
 
   const processLocalExtraction = async () => {
     const existingUploadId = pendingLocalUploadIdRef.current;
-    const uploadId = existingUploadId ?? window.crypto.randomUUID();
+    const uploadId = existingUploadId ?? crypto.randomUUID();
 
     if (!localFile) {
       setExtractFeedback({
@@ -509,7 +509,7 @@ export default function IngestionPage() {
 
     setApiFeedback({ state: "loading" });
     const existingUploadId = pendingApiUploadIdRef.current;
-    const uploadId = existingUploadId ?? window.crypto.randomUUID();
+    const uploadId = existingUploadId ?? crypto.randomUUID();
     if (!existingUploadId) {
       pendingApiUploadIdRef.current = uploadId;
       setUploads((previous) => [
@@ -650,7 +650,7 @@ export default function IngestionPage() {
     }
 
     setS3Feedback({ state: "loading" });
-    const uploadId = window.crypto.randomUUID();
+    const uploadId = crypto.randomUUID();
     setUploads((previous) => [
       {
         id: uploadId,

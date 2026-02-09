@@ -10,6 +10,7 @@ import {
 } from "@/lib/extraction-context";
 import { PipelineShell } from "@/components/PipelineShell";
 import { StageHero } from "@/components/StageHero";
+import { pickLocale, pickPageId } from "@/lib/metadata";
 import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 
 const RULES = [
@@ -147,6 +148,8 @@ const buildMetadataFromBackend = (
     next.sourceIdentifier =
       pickString(metadataRecord.sourceIdentifier) ?? next.sourceIdentifier;
     next.sourceType = pickString(metadataRecord.sourceType) ?? next.sourceType;
+    next.locale = pickLocale(metadataRecord) ?? next.locale;
+    next.pageId = pickPageId(metadataRecord) ?? next.pageId;
     const uploadedAtCandidate = pickNumber(metadataRecord.uploadedAt);
     if (uploadedAtCandidate) {
       next.uploadedAt = uploadedAtCandidate;
@@ -171,6 +174,8 @@ const buildMetadataFromBackend = (
   next.sourceIdentifier = derivedIdentifier ?? next.sourceIdentifier;
   next.sourceType = derivedType;
   next.source = describeSourceLabel(derivedType, next.source);
+  next.locale = pickLocale(backend) ?? next.locale;
+  next.pageId = pickPageId(backend) ?? next.pageId;
   next.cleansedId =
     pickString(backend.cleansedId) ??
     pickString(backend.cleansedDataStoreId) ??
@@ -477,6 +482,18 @@ export default function CleansingPageClient() {
               <dt className="text-xs uppercase tracking-wide text-slate-400">Source identifier</dt>
               <dd className="text-sm font-semibold text-slate-900 break-all">
                 {sourceIdentifier}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Locale</dt>
+              <dd className="text-sm font-semibold text-slate-900">
+                {context.metadata.locale ?? "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Page ID</dt>
+              <dd className="text-sm font-semibold text-slate-900">
+                {context.metadata.pageId ?? "—"}
               </dd>
             </div>
             <div>

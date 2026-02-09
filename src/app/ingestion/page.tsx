@@ -33,6 +33,7 @@ import {
 } from "@/lib/extraction-context";
 import { storeClientSnapshot } from "@/lib/client/snapshot-store";
 import type { ExtractionSnapshot } from "@/lib/extraction-snapshot";
+import { extractLocaleAndPageId, pickLocale, pickPageId } from "@/lib/metadata";
 import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
 import {
   readUploadHistory,
@@ -294,6 +295,20 @@ export default function IngestionPage() {
       const parsed = safeJsonParse(text);
       if (parsed) {
         seedPreviewTree(file.name, parsed);
+        const { locale, pageId } = extractLocaleAndPageId(parsed);
+        if (locale || pageId) {
+          setUploads((previous) =>
+            previous.map((upload) =>
+              upload.id === uploadId
+                ? {
+                    ...upload,
+                    locale: locale ?? upload.locale,
+                    pageId: pageId ?? upload.pageId,
+                  }
+                : upload,
+            ),
+          );
+        }
       } else {
         setTreeNodes([]);
         setPreviewLabel("Uploaded JSON could not be parsed.");
@@ -387,6 +402,9 @@ export default function IngestionPage() {
       ]);
     }
 
+    const parsedPayload = localFileText ? safeJsonParse(localFileText) : null;
+    const payloadMetadata = extractLocaleAndPageId(parsedPayload);
+
     try {
       const formData = new FormData();
       formData.append("file", localFile);
@@ -412,6 +430,8 @@ export default function IngestionPage() {
                 backendMessage: details.message ?? item.backendMessage,
                 sourceIdentifier,
                 sourceType,
+                locale: payloadMetadata.locale ?? details.locale ?? item.locale,
+                pageId: payloadMetadata.pageId ?? details.pageId ?? item.pageId,
               }
             : item,
         ),
@@ -435,6 +455,8 @@ export default function IngestionPage() {
         uploadedAt: Date.now(),
         sourceIdentifier,
         sourceType,
+        locale: payloadMetadata.locale ?? details.locale,
+        pageId: payloadMetadata.pageId ?? details.pageId,
       };
       const snapshotId = details.cleansedId ?? uploadId;
       let snapshotPersisted = false;
@@ -506,6 +528,7 @@ export default function IngestionPage() {
       setExtracting(false);
       return;
     }
+    const payloadMetadata = extractLocaleAndPageId(parsed);
 
     setApiFeedback({ state: "loading" });
     const existingUploadId = pendingApiUploadIdRef.current;
@@ -521,6 +544,8 @@ export default function IngestionPage() {
           source: "API",
           status: "uploading",
           createdAt: Date.now(),
+          locale: payloadMetadata.locale,
+          pageId: payloadMetadata.pageId,
         },
         ...previous,
       ]);
@@ -555,6 +580,8 @@ export default function IngestionPage() {
                 backendMessage: details.message ?? upload.backendMessage,
                 sourceIdentifier,
                 sourceType,
+                locale: payloadMetadata.locale ?? details.locale ?? upload.locale,
+                pageId: payloadMetadata.pageId ?? details.pageId ?? upload.pageId,
               }
             : upload,
         ),
@@ -585,6 +612,8 @@ export default function IngestionPage() {
         uploadedAt: Date.now(),
         sourceIdentifier,
         sourceType,
+        locale: payloadMetadata.locale ?? details.locale,
+        pageId: payloadMetadata.pageId ?? details.pageId,
       };
       const snapshotId = details.cleansedId ?? uploadId;
       const serializedPayload = JSON.stringify(parsed, null, 2);
@@ -686,6 +715,8 @@ export default function IngestionPage() {
               backendMessage: details.message ?? upload.backendMessage,
               sourceIdentifier,
               sourceType,
+              locale: details.locale ?? upload.locale,
+              pageId: details.pageId ?? upload.pageId,
             }
           : upload,
       ),
@@ -716,6 +747,8 @@ export default function IngestionPage() {
       uploadedAt: Date.now(),
       sourceIdentifier,
       sourceType,
+      locale: details.locale,
+      pageId: details.pageId,
     };
     const snapshotId = details.cleansedId ?? uploadId;
 
@@ -781,6 +814,8 @@ export default function IngestionPage() {
       pickString(bodyRecord?.cleansedId) ??
       pickString(bodyRecord?.id);
     const status = pickString(bodyRecord?.status);
+    const locale = pickLocale(metadataRecord) ?? pickLocale(bodyRecord);
+    const pageId = pickPageId(metadataRecord) ?? pickPageId(bodyRecord);
 
     const pickMessage = (source: unknown) => {
       const direct = pickString(source);
@@ -824,7 +859,7 @@ export default function IngestionPage() {
       pickMessage(rawBody) ??
       (typeof rawBody === "string" ? rawBody : undefined);
 
-    return { cleansedId, status, message, sourceIdentifier, sourceType };
+    return { cleansedId, status, message, sourceIdentifier, sourceType, locale, pageId };
   };
 
   type SnapshotPayload = Omit<ExtractionSnapshot, "storedAt">;

@@ -12,6 +12,7 @@
  import { PipelineShell } from "@/components/PipelineShell";
  import { StageHero } from "@/components/StageHero";
  import { describeSourceLabel, inferSourceType, pickString } from "@/lib/source";
+ import { pickLocale, pickPageId } from "@/lib/metadata";
 
  type Feedback = {
    state: "idle" | "loading" | "success" | "error";
@@ -809,6 +810,8 @@ const normalized = source.trim().toUpperCase();
                 next.sourceIdentifier =
                   pickString(metadataRecord.sourceIdentifier) ?? next.sourceIdentifier;
                 next.sourceType = pickString(metadataRecord.sourceType) ?? next.sourceType;
+                next.locale = pickLocale(backend) ?? next.locale;
+                next.pageId = pickPageId(backend) ?? next.pageId;
                 const uploadedCandidate = pickNumber(metadataRecord.uploadedAt);
                 if (uploadedCandidate) {
                   next.uploadedAt = uploadedCandidate;
@@ -1645,6 +1648,18 @@ const normalized = source.trim().toUpperCase();
                                           {new Date(
                                             statusHistory[statusHistory.length - 1]?.timestamp ?? context.startedAt,
                                           ).toLocaleString()}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs uppercase tracking-wide text-slate-400">Locale</p>
+                                        <p className="text-sm font-semibold text-slate-900">
+                                          {context.metadata.locale ?? "—"}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs uppercase tracking-wide text-slate-400">Page ID</p>
+                                        <p className="text-sm font-semibold text-slate-900">
+                                          {context.metadata.pageId ?? "—"}
                                         </p>
                                       </div>
                                     </div>

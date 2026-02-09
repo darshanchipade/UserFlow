@@ -9,6 +9,21 @@ type ChatMessage = {
   content: string | Record<string, unknown> | unknown[];
 };
 
+const downloadJson = (payload: unknown, filename?: string) => {
+  try {
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename ?? `chatbot-result-${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    // best-effort
+  }
+};
+
 function MessageBubble({ role, content }: ChatMessage) {
   const isUser = role === "user";
   const isJson = typeof content !== "string";
@@ -19,9 +34,21 @@ function MessageBubble({ role, content }: ChatMessage) {
         className={`${isUser ? "bg-blue-600 text-white" : "bg-white text-[#111215]"} max-w-[80%] rounded-2xl px-4 py-3 shadow`}
       >
         {isJson ? (
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-sm">
-            {JSON.stringify(content, null, 2)}
-          </pre>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>JSON response</span>
+              <button
+                type="button"
+                onClick={() => downloadJson(content)}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Download JSON
+              </button>
+            </div>
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-sm">
+              {JSON.stringify(content, null, 2)}
+            </pre>
+          </div>
         ) : (
           <div className="whitespace-pre-wrap break-words text-sm">{content}</div>
         )}
@@ -90,7 +117,7 @@ export default function ChatbotPage() {
   };
 
   return (
-    <PipelineShell currentStep="ingestion">
+    <PipelineShell currentStep="ingestion" showTracker={false}>
       <StageHero
         title="Chatbot"
         description="Ask natural-language questions about your content. Responses stream from the Spring Boot ChatBotController."

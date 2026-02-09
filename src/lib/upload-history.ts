@@ -16,6 +16,8 @@ export type UploadHistoryItem = {
   backendMessage?: string;
   sourceIdentifier?: string;
   sourceType?: string;
+  locale?: string;
+  pageId?: string;
 };
 
 export const UPLOAD_HISTORY_STORAGE_KEY = "content-lake.upload-history.v1";

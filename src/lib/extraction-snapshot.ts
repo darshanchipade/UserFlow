@@ -9,6 +9,8 @@ export type ExtractionSnapshot = {
     cleansedId?: string;
     status?: string;
     uploadedAt: number;
+    locale?: string;
+    pageId?: string;
   };
   rawJson?: string;
   tree?: TreeNode[];

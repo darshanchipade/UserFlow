@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from "react";
-import { PipelineShell } from "@/components/PipelineShell";
 import { StageHero } from "@/components/StageHero";
+import { PipelineShell } from "@/components/PipelineShell";
 import {
   SearchInterface,
   type SearchFilter,
@@ -29,10 +29,17 @@ type RawChip = {
 
 const normalizeRefinementPayload = (payload: unknown): RefinementChip[] => {
   if (!Array.isArray(payload)) return [];
+  const displayLabel = (type?: string) => {
+    if (!type) return undefined;
+    if (type === "sectionName") return "Section Name";
+    if (type === "sectionKey") return "Section Key";
+    return type;
+  };
   return payload
     .filter((chip): chip is RawChip => isRecord(chip) && typeof chip.value === "string")
     .map((chip, index) => {
-      const label = chip.type ? `${chip.type}: ${chip.value}` : chip.value ?? `Chip ${index + 1}`;
+      const typeLabel = displayLabel(chip.type);
+      const label = typeLabel ? `${typeLabel}: ${chip.value}` : chip.value ?? `Chip ${index + 1}`;
       return {
         id: `${chip.type ?? "chip"}-${chip.value}-${index}`,
         label,
@@ -40,8 +47,41 @@ const normalizeRefinementPayload = (payload: unknown): RefinementChip[] => {
         isActive: false,
         value: chip.value ?? "",
         type: chip.type,
-      };
-    });
+        __index: index,
+      } as RefinementChip & { __index: number };
+    })
+    .sort((a, b) => {
+      const aPinned = a.type === "sectionName" ? 1 : 0;
+      const bPinned = b.type === "sectionName" ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+      return a.__index - b.__index;
+    })
+    .map(({ __index, ...chip }) => chip);
+};
+
+const appendContextValue = (
+  target: Record<string, unknown>,
+  pathParts: string[],
+  value: string,
+) => {
+  if (!pathParts.length) return;
+  let currentLevel = target;
+  for (let i = 0; i < pathParts.length - 1; i += 1) {
+    const part = pathParts[i];
+    if (!isRecord(currentLevel[part])) {
+      currentLevel[part] = {};
+    }
+    currentLevel = currentLevel[part] as Record<string, unknown>;
+  }
+  const leaf = pathParts[pathParts.length - 1];
+  const existing = currentLevel[leaf];
+  if (!Array.isArray(existing)) {
+    currentLevel[leaf] = [];
+  }
+  const bucket = currentLevel[leaf] as string[];
+  if (!bucket.includes(value)) {
+    bucket.push(value);
+  }
 };
 
 const buildSearchRequest = (query: string, chips: RefinementChip[]) => {
@@ -50,6 +90,7 @@ const buildSearchRequest = (query: string, chips: RefinementChip[]) => {
     tags: string[];
     keywords: string[];
     context: Record<string, unknown>;
+    original_field_name?: string;
   } = {
     query,
     tags: [],
@@ -63,27 +104,19 @@ const buildSearchRequest = (query: string, chips: RefinementChip[]) => {
       request.tags.push(chip.value);
     } else if (chip.type === "Keyword") {
       request.keywords.push(chip.value);
+    } else if (chip.type === "sectionName") {
+      if (!request.original_field_name) {
+        request.original_field_name = chip.value;
+      } else if (request.original_field_name !== chip.value) {
+        appendContextValue(request.context, ["facets", "sectionName"], chip.value);
+      }
+    } else if (chip.type === "sectionKey") {
+      appendContextValue(request.context, ["facets", "sectionKey"], chip.value);
     } else if (chip.type.startsWith("Context:")) {
       const fullPath = chip.type.substring("Context:".length);
       const pathParts = fullPath.split(".").map((part) => part.trim()).filter(Boolean);
       if (!pathParts.length) return;
-      let currentLevel = request.context;
-      for (let i = 0; i < pathParts.length - 1; i += 1) {
-        const part = pathParts[i];
-        if (!isRecord(currentLevel[part])) {
-          currentLevel[part] = {};
-        }
-        currentLevel = currentLevel[part] as Record<string, unknown>;
-      }
-      const leaf = pathParts[pathParts.length - 1];
-      const existing = currentLevel[leaf];
-      if (!Array.isArray(existing)) {
-        currentLevel[leaf] = [];
-      }
-      const target = currentLevel[leaf] as string[];
-      if (!target.includes(chip.value)) {
-        target.push(chip.value);
-      }
+      appendContextValue(request.context, pathParts, chip.value);
     }
   });
 
@@ -183,7 +216,7 @@ export default function SearchPage() {
   };
 
   return (
-    <PipelineShell currentStep="ingestion">
+    <PipelineShell currentStep="ingestion" showTracker={false}>
       <StageHero
         title="Search Finder"
         description="Explore Content Lake with AI-powered refinements fed by the Spring Boot search controller."

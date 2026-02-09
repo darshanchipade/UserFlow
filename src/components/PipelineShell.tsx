@@ -12,6 +12,7 @@ import { PipelineTracker, type StepId } from "@/components/PipelineTracker";
 
 type PipelineShellProps = {
   currentStep: StepId;
+  showTracker?: boolean;
   children: ReactNode;
 };
 
@@ -22,7 +23,7 @@ const workspaceLinks = [
   { label: "Search Finder", href: "/search", icon: MagnifyingGlassIcon },
 ];
 
-export function PipelineShell({ currentStep, children }: PipelineShellProps) {
+export function PipelineShell({ currentStep, showTracker = true, children }: PipelineShellProps) {
   return (
     <div className="flex min-h-screen bg-[#f7f9fb] text-slate-900">
       <aside className="sticky top-0 hidden h-screen w-72 flex-col border-r border-slate-200 bg-white/90 px-6 py-8 shadow-[20px_0_45px_rgba(15,23,42,0.06)] backdrop-blur lg:flex">
@@ -77,11 +78,13 @@ export function PipelineShell({ currentStep, children }: PipelineShellProps) {
           <span>{currentStep}</span>
         </div>
         <div className="relative">
-          <div className="sticky top-0 z-30 border-b border-slate-200 bg-[#f7f9fb]/90 backdrop-blur">
-            <div className="mx-auto max-w-6xl px-6 py-6">
-              <PipelineTracker current={currentStep} />
+          {showTracker && (
+            <div className="sticky top-0 z-30 border-b border-slate-200 bg-[#f7f9fb]/90 backdrop-blur">
+              <div className="mx-auto max-w-6xl px-6 py-6">
+                <PipelineTracker current={currentStep} />
+              </div>
             </div>
-          </div>
+          )}
           <div>{children}</div>
         </div>
       </div>

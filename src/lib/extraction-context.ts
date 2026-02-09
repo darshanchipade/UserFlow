@@ -11,6 +11,8 @@ export type ExtractionContext = {
     uploadedAt: number;
     sourceIdentifier?: string;
     sourceType?: string;
+    locale?: string;
+    pageId?: string;
   };
   sourceUri?: string;
   snapshotId?: string;

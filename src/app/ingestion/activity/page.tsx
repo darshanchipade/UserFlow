@@ -280,6 +280,18 @@ export default function UploadActivityPage() {
                   </dd>
                 </div>
                 <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-400">Locale</dt>
+                  <dd className="text-sm font-semibold text-slate-900">
+                    {activeUpload.locale ?? "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-400">Page ID</dt>
+                  <dd className="text-sm font-semibold text-slate-900">
+                    {activeUpload.pageId ?? "—"}
+                  </dd>
+                </div>
+                <div>
                   <dt className="text-xs uppercase tracking-wide text-slate-400">Backend status</dt>
                   <dd className="text-sm font-semibold text-slate-900">
                     {activeUpload.backendStatus ?? "—"}
